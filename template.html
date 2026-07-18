@@ -32,9 +32,17 @@ h1{margin:2px 0 10px;font-size:30px;font-weight:800}
 .inforow .k{color:var(--tx)}.inforow .v{color:var(--mut);display:flex;align-items:center;gap:6px}
 .trophies{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
 .trophy{width:40px;height:46px;background:var(--pan2);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:18px;position:relative;padding:4px}.trophy img{max-width:100%;max-height:100%;object-fit:contain}.tpl{position:absolute;bottom:-2px;right:-2px;background:#1a1f24;border-radius:3px;font-size:9px;padding:1px 4px;color:var(--mut)}
-.tabs{display:flex;background:var(--pan);border-radius:6px;margin-bottom:10px;overflow:hidden;flex-wrap:wrap}
-.tabs button{background:none;border:none;color:var(--mut);padding:13px 18px;font-size:13px;font-weight:600;cursor:pointer}
-.tabs button.on{background:var(--pan2);color:#fff;box-shadow:inset 0 -2px 0 var(--blue)}
+.tabs{display:block;background:var(--pan);border-radius:8px;margin-bottom:10px;overflow:visible}
+.nav1{display:flex;gap:4px;padding:7px 7px 0}
+.nav2{display:flex;gap:3px;padding:6px 7px 7px;margin-top:6px;border-top:1px solid var(--line);overflow-x:auto}
+.tabs .nav1 .gbtn{background:none;border:none;color:var(--mut);padding:10px 16px;font-size:13.5px;font-weight:700;cursor:pointer;border-radius:7px;display:flex;align-items:center;gap:7px;white-space:nowrap;transition:background .12s,color .12s}
+.tabs .nav1 .gbtn .gi{font-size:15px;line-height:1}
+.tabs .nav1 .gbtn:hover:not(.on){color:var(--tx);background:rgba(255,255,255,.05)}
+.tabs .nav1 .gbtn.on{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(60,120,200,.35)}
+.tabs .nav2 button{background:none;border:none;color:var(--mut);padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;border-radius:7px;display:flex;align-items:center;gap:6px;white-space:nowrap;transition:background .12s,color .12s}
+.tabs .nav2 button .ti{font-size:13px;opacity:.85}
+.tabs .nav2 button:hover:not(.on){color:var(--tx);background:rgba(255,255,255,.05)}
+.tabs .nav2 button.on{background:var(--pan2);color:#fff;box-shadow:inset 0 -2px 0 var(--gold)}
 sec{display:none}sec.on{display:block}
 .box{background:var(--pan);border-radius:6px;padding:16px;margin-bottom:10px;box-shadow:0 1px 0 rgba(255,255,255,.02)}
 .box h3{margin:0 0 14px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut)}
@@ -274,8 +282,6 @@ th.srt-th:hover{color:var(--tx)}
 .srow.more{justify-content:flex-end;color:var(--acc);font-size:11px;font-weight:600;border-bottom:none}
 .srow.more:hover{color:var(--blue);background:transparent}
 .tabs{position:sticky;top:46px;z-index:20;box-shadow:0 3px 8px rgba(0,0,0,.28)}
-.tabs button{transition:background .12s,color .12s}
-.tabs button:hover:not(.on){color:var(--tx);background:rgba(255,255,255,.04)}
 @media(max-width:900px){.layout{grid-template-columns:1fr}.side{position:static;order:2}}
 </style></head><body><div class="topbar" id="topbar"></div><div class="wrap" id="app"></div>
 <div class="modal" id="modal" onclick="if(event.target===this)this.classList.remove('on')"><div class="mbox" id="mbox"></div></div>
@@ -577,10 +583,32 @@ function render(){
  <div id="views"></div>
  <div class="foot">EM2026 Team Center · авто-определение команды${D.live?' · 🟢 live из памяти игры':(D.saved_at?' · данные на момент сохранения игры: '+D.saved_at:'')}</div>
  </div><aside class="side">${sideHtml}</aside></div>`;
- const TABS=[['info','Info'],['roster','Roster'],['matches','Matches'],['rank','Рейтинг'],['tourns','Турниры'],['cal','Календарь'],['transfers','Трансферы'],['ach','Трофеи'],['stats','Stats'],['awards','Награды'],['talents','Таланты'],['power','Сила'],['fin','Finances']];
+ // grouped two-tier navigation: 3 sections on top, only the active section's tabs below
+ const GROUPS=[
+  {key:'team',label:'Моя команда',icon:'🏠',tabs:[['info','Обзор','📋'],['roster','Состав','👥'],['matches','Матчи','🎮'],['ach','Трофеи','🏆'],['fin','Финансы','💰']]},
+  {key:'league',label:'Лига',icon:'🌍',tabs:[['rank','Рейтинг','🏅'],['power','Сила команд','💪'],['tourns','Турниры','🎫'],['cal','Календарь','📅']]},
+  {key:'players',label:'Игроки',icon:'👤',tabs:[['stats','Статистика','📊'],['awards','Награды','⭐'],['talents','Таланты','🌱'],['transfers','Трансферы','🔁']]},
+ ];
+ const TAB_OF={};GROUPS.forEach((g,gi)=>g.tabs.forEach(t=>TAB_OF[t[0]]=gi));
  const tb=document.getElementById('tabs'),vs=document.getElementById('views');
- TABS.forEach(([id,l],i)=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>show(id);tb.appendChild(b);const s=document.createElement('sec');s.id='s_'+id;vs.appendChild(s);if(!i){b.classList.add('on');s.classList.add('on');}});
- window.show=id=>{[...tb.children].forEach((b,i)=>b.classList.toggle('on',TABS[i][0]===id));[...vs.children].forEach(s=>s.classList.toggle('on',s.id==='s_'+id));if(id==='rank'){const me=document.querySelector('.rrow.me');if(me)me.scrollIntoView({block:'center'});}};
+ tb.innerHTML='<div class="nav1"></div><div class="nav2"></div>';
+ const n1=tb.querySelector('.nav1'),n2=tb.querySelector('.nav2');
+ // one <sec> per tab (all groups)
+ GROUPS.forEach(g=>g.tabs.forEach(([id])=>{const s=document.createElement('sec');s.id='s_'+id;vs.appendChild(s);}));
+ GROUPS.forEach((g,gi)=>{const b=document.createElement('button');b.className='gbtn';b.innerHTML='<span class="gi">'+g.icon+'</span>'+g.label;b.onclick=()=>{selGroup(gi);show(GROUPS[gi].tabs[0][0]);};n1.appendChild(b);});
+ function selGroup(gi){
+  [...n1.children].forEach((b,i)=>b.classList.toggle('on',i===gi));
+  n2.innerHTML='';
+  GROUPS[gi].tabs.forEach(([id,l,ic])=>{const b=document.createElement('button');b.dataset.tab=id;b.innerHTML=(ic?'<span class="ti">'+ic+'</span>':'')+l;b.onclick=()=>show(id);n2.appendChild(b);});
+ }
+ window.show=id=>{
+  let gi=TAB_OF[id];if(gi==null)gi=0;
+  if(!([...n1.children][gi]||{}).classList||![...n1.children][gi].classList.contains('on'))selGroup(gi);
+  [...n2.children].forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
+  [...vs.children].forEach(s=>s.classList.toggle('on',s.id==='s_'+id));
+  if(id==='rank'){const me=document.querySelector('.rrow.me');if(me)me.scrollIntoView({block:'center'});}
+ };
+ selGroup(0);show('info');
  // INFO
  const pw=playerOfWeek(),ms=mapStats(),ft=formTiles(5);
  document.getElementById('s_info').innerHTML=`${pw?`<div class="box"><h3>Игрок патча</h3>${pw}</div>`:''}
