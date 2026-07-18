@@ -776,9 +776,12 @@ def compute_tournament_awards(D):
     player of the team that WON it; EVPs are the rest of the winner's core
     plus the runner-up's star. Returns {nick: {"mvp": n, "evp": n}}."""
     awards = {}
-    def bump(nk, key):
+    def bump(nk, key, event):
         if not nk: return
-        awards.setdefault(nk, {"mvp": 0, "evp": 0})[key] += 1
+        a = awards.setdefault(nk, {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": []})
+        a[key] += 1
+        if event:
+            a[key + "Events"].append(event)
     def top_players(team, k):
         pls = [p for p in D["players"].values() if p.get("team") == team and p.get("nick")]
         pls.sort(key=lambda p: p.get("overall", 0), reverse=True)
@@ -793,14 +796,15 @@ def compute_tournament_awards(D):
         wp = top_players(winner, 5)
         if not wp:
             continue
-        bump(wp[0]["nick"], "mvp")            # tournament MVP = winner's star
-        for e in wp[1:3]:                      # a couple of the winner's other stars
-            bump(e["nick"], "evp")
+        ev = t.get("name") or ""
+        bump(wp[0]["nick"], "mvp", ev)         # tournament MVP = winner's star
+        for e in wp[1:3]:                       # a couple of the winner's other stars
+            bump(e["nick"], "evp", ev)
         runner = next((tm for tm, pl in st.items() if pl == 2), None)
         if runner:
             rp = top_players(runner, 1)
             if rp:
-                bump(rp[0]["nick"], "evp")     # runner-up's star also an EVP
+                bump(rp[0]["nick"], "evp", ev)  # runner-up's star also an EVP
     return awards
 
 def compute_trophies(D):
@@ -1026,6 +1030,8 @@ def build_payload(D, photos, team_logo, tlogos):
         if aw:
             if aw["mvp"]: o["mvp"] = aw["mvp"]   # tournament MVP count
             if aw["evp"]: o["evp"] = aw["evp"]   # tournament EVP count
+            if aw.get("mvpEvents"): o["mvpEvents"] = aw["mvpEvents"]   # which events
+            if aw.get("evpEvents"): o["evpEvents"] = aw["evpEvents"]
         if p.get("stats"): o["stats"] = p["stats"]
         te = team_earnings.get(p["team"], 0)
         if te and team_count.get(p["team"]):
