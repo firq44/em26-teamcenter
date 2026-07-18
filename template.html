@@ -171,6 +171,10 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 .trfcard .tmove .tini{width:30px;height:30px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;color:#1a1f24}
 .trfcard .tmove .arr{color:var(--gold);font-size:18px;font-weight:800}
 .trfcard .tfee{text-align:center;font-weight:800;color:var(--gold);font-size:15px}
+/* world ranking development */
+.rkdev{display:flex;gap:30px;margin-bottom:8px}
+.rkdev .c span{color:var(--mut);font-size:11px;display:block}
+.rkdev .c b{font-size:22px}
 </style></head><body><div class="wrap" id="app"></div>
 <div class="modal" id="modal" onclick="if(event.target===this)this.classList.remove('on')"><div class="mbox" id="mbox"></div></div>
 <script>
@@ -284,6 +288,24 @@ function formChart(){const ms=D.my_matches;if(!ms.length)return '';
  return `<div class="chartkpis"><div class="c"><b>${wins}-${ms.length-wins}</b><span>W-L (посл. ${ms.length})</span></div><div class="c"><b>${Math.round(wins/ms.length*100)}%</b><span>Винрейт</span></div><div class="c"><b>#${T.rank||'-'}</b><span>Мировой ранг</span></div></div>
  <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><path d="${path}" fill="none" stroke="var(--gold)" stroke-width="2.5"/>${pts.map((v,i)=>`<circle cx="${xs(i).toFixed(0)}" cy="${ys(v).toFixed(0)}" r="2.5" fill="var(--acc)"/>`).join('')}</svg>`;}
 
+// world-ranking development: rank over time (rank #1 at the top, inverted y-axis)
+function rankDevSVG(ranks){
+ if(!ranks||ranks.length<2)return '';
+ const W=720,H=150,pad=30;
+ const min=Math.min.apply(null,ranks),max=Math.max.apply(null,ranks),span=(max-min)||1;
+ const xs=i=>pad+i*(W-2*pad)/(ranks.length-1);
+ const ys=v=>pad+(v-min)/span*(H-2*pad);   // best rank (min) sits at the top
+ const path=ranks.map((v,i)=>(i?'L':'M')+xs(i).toFixed(1)+' '+ys(v).toFixed(1)).join(' ');
+ const area=path+' L'+xs(ranks.length-1).toFixed(1)+' '+(H-pad)+' L'+pad+' '+(H-pad)+' Z';
+ const gl=v=>`<line x1="${pad}" y1="${ys(v).toFixed(1)}" x2="${W-pad}" y2="${ys(v).toFixed(1)}" stroke="var(--line)" stroke-dasharray="4 4"/><text x="${(pad-6).toFixed(1)}" y="${(ys(v)+3).toFixed(1)}" fill="var(--mut)" font-size="10" text-anchor="end">#${v}</text>`;
+ const last=ranks.length-1;
+ return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${gl(min)}${max!==min?gl(max):''}<path d="${area}" fill="rgba(240,168,58,.10)"/><path d="${path}" fill="none" stroke="var(--gold)" stroke-width="2.5"/>${ranks.map((v,i)=>`<circle cx="${xs(i).toFixed(1)}" cy="${ys(v).toFixed(1)}" r="2.2" fill="var(--acc)"/>`).join('')}<circle cx="${xs(last).toFixed(1)}" cy="${ys(ranks[last]).toFixed(1)}" r="4" fill="var(--gold)"/></svg>`;}
+// builds the "world ranking development" box for a team (used in the team modal)
+function rankDevBox(team,curRank){
+ const rh=(D.rank_hist||{})[team];if(!rh||rh.length<2)return '';
+ const peak=Math.min.apply(null,rh),atpeak=rh.filter(x=>x===peak).length;
+ const cur=curRank||rh[rh.length-1];
+ return `<div class="statbox"><div class="sh">Развитие мирового рейтинга <span>· ${rh.length} обновлений</span></div><div class="rkdev"><div class="c"><span>Сейчас</span><b>#${cur}</b></div><div class="c"><span>Пик</span><b style="color:var(--gold)">#${peak}</b></div><div class="c"><span>Обновлений на пике</span><b>${atpeak}</b></div></div>${rankDevSVG(rh)}</div>`;}
 function render(){
  const myWon=(T.won)||[];
  const troph=trophyStrip(myWon);
@@ -442,6 +464,7 @@ window.openT=function(team){if(!team)return;var t=(D.ranking||[]).find(function(
  var logoEl=logo?'<img class="mphoto" style="object-fit:contain;background:#20272e;padding:16px" src="'+logo+'">':'<div class="mphoto" style="background:'+col(team)+';display:flex;align-items:center;justify-content:center;font-size:42px;font-weight:800;color:#1a1f24">'+team.slice(0,3).toUpperCase()+'</div>';
  var rosterRows=((t&&t.roster)||[]).map(function(r){return "<tr onclick='openP("+JSON.stringify(r.nick)+")'><td><div class=\"pcell\">"+av({nick:r.nick})+"<span>"+flag(r.country)+" "+r.nick+"</span></div></td><td>"+(r.age||'-')+"</td><td><b>"+(r.overall||'-')+"</b></td></tr>";}).join('');
  var badges=majBadge(won,'Чемпион');
+ var rankDev=rankDevBox(team, t?t.rank:null);
  document.getElementById('mbox').innerHTML='<span class="close" onclick="document.getElementById(\'modal\').classList.remove(\'on\')">×</span>'+
   '<div class="mhero">'+(logo?'<img class="hbg" src="'+logo+'">':'')+logoEl+
   '<div class="mheroinfo" style="flex:1;min-width:0">'+
@@ -452,7 +475,7 @@ window.openT=function(team){if(!team)return;var t=(D.ranking||[]).find(function(
     '<tr><td>Игроков в составе</td><td>'+(((t&&t.roster)||[]).length)+'</td></tr>'+
     (badges?'<tr><td>Награды</td><td><div class="mbadges">'+badges+'</div></td></tr>':'')+
    '</table>'+
-  '</div></div>'+trophies+
+  '</div></div>'+trophies+rankDev+
   '<div class="statbox"><div class="sh">Состав</div><table><thead><tr><th>Игрок</th><th>Возр.</th><th>Овр</th></tr></thead><tbody>'+(rosterRows||'<tr><td colspan="3" style="color:var(--mut)">Нет данных о составе</td></tr>')+'</tbody></table></div>';
  document.getElementById('modal').classList.add('on');};
 // tournament page: final standings, prize money, points, majors

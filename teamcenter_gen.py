@@ -137,7 +137,7 @@ def clean_nick(n):
 def extract(root):
     D = {"myTeam": "", "players": {}, "roster": [], "teamRank": {}, "teamFull": {},
          "teamCountry": {}, "trophies": [], "team_medals": [0, 0, 0], "staff": [], "coach": None,
-         "cash": 0, "txns": [], "avgAge": None, "scoreboards": []}
+         "cash": 0, "txns": [], "avgAge": None, "scoreboards": [], "pointsHist": {}, "rankHist": {}}
     org = A(at(root, 22)); D["myTeam"] = S(at(org, 1)) or ""
     my = D["myTeam"]
     # Honours are stored in root[27] (per team) / root[26] (per player). Index [1] is a
@@ -172,9 +172,30 @@ def extract(root):
         D["teamCountry"][nm] = (S(at(r,3)) or "") if len(r) > 3 else ""
         rk = L(at(r, 30)) if len(r) > 30 else 0   # field 30 = the game's stored world rank
         if rk > 0: D["teamRank"][nm] = rk
+        # field 13 = the team's ranking-points history (a short time series of VRS-like
+        # points). We turn every team's points series into a rank-over-time series below.
+        ph = at(r, 13)
+        inner = None
+        if isinstance(ph, list) and ph:
+            if isinstance(ph[0], list):      inner = ph[0]
+            elif isinstance(ph[0], (int, float)): inner = ph
+        if inner:
+            D["pointsHist"][nm] = [Dd(x) for x in inner]
     # fallback only for teams the game left unranked
     tr.sort(key=lambda x: x[1], reverse=True)
     for k, (nm, _) in enumerate(tr): D["teamRank"].setdefault(nm, k + 1)
+    # world-ranking DEVELOPMENT: at each historical points snapshot, rank every team by
+    # its points that week. Gives each team a rank-over-time series (like HLTV's chart).
+    ph = D["pointsHist"]
+    if ph:
+        span = max((len(v) for v in ph.values()), default=0)
+        rh = {nm: [] for nm in ph}
+        for s in range(span):
+            snap = [(nm, v[s]) for nm, v in ph.items() if len(v) > s]
+            snap.sort(key=lambda x: x[1], reverse=True)
+            for pos, (nm, _) in enumerate(snap):
+                rh[nm].append(pos + 1)
+        D["rankHist"] = rh
     players = A(at(root, 9)) or []
     for pp in players:
         p = A(pp)
@@ -1011,6 +1032,7 @@ def build_payload(D, photos, team_logo, tlogos):
         "scoreboards": D["scoreboards"],
         "my_matches": [],
         "ranking": build_ranking(D, team_won),
+        "rank_hist": D.get("rankHist", {}),
         "transfers": D.get("transfers", [])[:250],
         "free_agents": free_agents,
         "tournaments": tourn_list,
