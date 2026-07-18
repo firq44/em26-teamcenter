@@ -196,6 +196,14 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 .mvrow .mvout{color:var(--bad);font-weight:800;width:16px;flex:0 0 auto}
 .mvrow .av{width:34px;height:38px;border-radius:5px;overflow:hidden;flex:0 0 auto;display:block;background:#20272e}
 .mvrow .av img{width:100%;height:100%;object-fit:cover;object-position:top}
+/* H2H + streak + form tiles */
+.h2pill{display:inline-block;min-width:30px;text-align:center;padding:2px 5px;margin:1px;border-radius:4px;font-size:10px;font-weight:700;color:#fff}
+.h2pill.w{background:#2e7d43}.h2pill.l{background:#a5392f}
+.streak{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+.stbig{font-size:15px;font-weight:800}.stbig.w{color:#4ba85a}.stbig.l{color:#c86b63}
+.wlrow{display:flex;gap:4px;flex-wrap:wrap}
+.wl{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
+.wl.w{background:#2e7d43}.wl.l{background:#a5392f}
 /* MVP coin badge + tournament tooltip */
 .mvpcoin{vertical-align:middle;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
 .mvpb{position:relative;display:inline-flex;align-items:center;gap:3px;cursor:help;font-weight:800;color:var(--gold);line-height:1}
@@ -354,6 +362,35 @@ function mapStats(){const sb=(D.scoreboards||[]);if(!sb.length)return '';
  const colFor=p=>p>=0.6?'#4ba85a':p>=0.4?'#e0a53a':'#c1504a';
  const label=m=>m==='__other'?'Другие':mapClean(m);
  return rows.map(r=>`<div class="maprow"><div class="mn">${label(r.m)}</div><div class="mtrack"><div class="mfill" style="width:${Math.round(r.pct*100)}%;background:${colFor(r.pct)}"></div></div><div class="mpct">${Math.round(r.pct*100)}% <span>(${r.w}-${r.n-r.w})</span></div></div>`).join('');}
+// MVP race: players ranked by tournament MVP then EVP
+function mvpRace(){var arr=Object.values(P).filter(function(p){return (p.mvp||0)+(p.evp||0)>0;});
+ if(!arr.length)return '';
+ arr.sort(function(a,b){return (b.mvp||0)-(a.mvp||0)||(b.evp||0)-(a.evp||0)||((b.stats&&b.stats.rating)||0)-((a.stats&&a.stats.rating)||0);});
+ var rows=arr.slice(0,30).map(function(p,i){return '<tr onclick=\'openP('+JSON.stringify(p.nick)+')\'><td>'+(i+1)+'</td><td><div class="pcell">'+avn(p.nick)+'<span>'+(flag(p.country,true)||'')+' '+p.nick+'</span></div></td><td style="cursor:pointer" onclick=\'event.stopPropagation();openT('+JSON.stringify(p.team||'')+')\'>'+(p.team||'—')+'</td><td>'+mvpCell(p)+'</td><td>'+evpCell(p)+'</td><td><b>'+((p.stats&&p.stats.rating)||'—')+'</b></td></tr>';}).join('');
+ return '<table><thead><tr><th>#</th><th>Игрок</th><th>Команда</th><th title="MVP турниров">MVP</th><th title="EVP турниров">EVP</th><th>Рейтинг</th></tr></thead><tbody>'+rows+'</tbody></table>';}
+// prize-money leaderboard: players by career earnings (team prize, split across the roster)
+function prizeBoard(){var arr=Object.values(P).filter(function(p){return (p.earnings||0)>0;});
+ if(!arr.length)return '';
+ arr.sort(function(a,b){return (b.earnings||0)-(a.earnings||0)||((b.won?b.won.length:0)-(a.won?a.won.length:0));});
+ var rows=arr.slice(0,30).map(function(p,i){return '<tr onclick=\'openP('+JSON.stringify(p.nick)+')\'><td>'+(i+1)+'</td><td><div class="pcell">'+avn(p.nick)+'<span>'+(flag(p.country,true)||'')+' '+p.nick+'</span></div></td><td style="cursor:pointer" onclick=\'event.stopPropagation();openT('+JSON.stringify(p.team||'')+')\'>'+(p.team||'—')+'</td><td>'+(p.won?p.won.length:0)+'</td><td><b style="color:var(--gold)">'+fmt(p.earnings)+'</b></td></tr>';}).join('');
+ return '<table><thead><tr><th>#</th><th>Игрок</th><th>Команда</th><th>Титулы</th><th>Призовые</th></tr></thead><tbody>'+rows+'</tbody></table>';}
+// H2H: my team's head-to-head record vs each opponent (from per-map scoreboards)
+function h2hTable(){var sb=(D.scoreboards||[]);if(!sb.length)return '';
+ var agg={};sb.forEach(function(m){var o=m.opp;if(!o)return;var a=agg[o]||(agg[o]={w:0,l:0,rf:0,ra:0,last:[]});var win=m.myScore>m.oppScore;if(win)a.w++;else a.l++;a.rf+=m.myScore;a.ra+=m.oppScore;a.last.push({win:win,s:m.myScore+':'+m.oppScore,map:m.map});});
+ var rows=Object.keys(agg).map(function(o){var a=agg[o];return {opp:o,w:a.w,l:a.l,n:a.w+a.l,rf:a.rf,ra:a.ra,last:a.last};});
+ if(!rows.length)return '';
+ rows.sort(function(x,y){return y.n-x.n||y.w-x.w;});
+ var tl=function(t){var l=tlogoOf(t);return l?'<img class="rlogo" style="width:24px;height:24px" src="'+l+'">':'<div class="rlogo ini" style="width:24px;height:24px;background:'+col(t)+'">'+(t||'?').slice(0,2).toUpperCase()+'</div>';};
+ var body=rows.map(function(r){var pct=Math.round(r.w/r.n*100);var c2=pct>=60?'#4ba85a':pct>=40?'#e0a53a':'#c1504a';var pills=r.last.slice(-5).map(function(x){return '<span class="h2pill '+(x.win?'w':'l')+'" title="'+(x.map||'')+'">'+x.s+'</span>';}).join('');
+  return '<tr onclick=\'openT('+JSON.stringify(r.opp)+')\'><td><div class="pcell">'+tl(r.opp)+'<span>'+r.opp+'</span></div></td><td>'+r.n+'</td><td><b style="color:var(--good)">'+r.w+'</b>–<b style="color:var(--bad)">'+r.l+'</b></td><td style="color:'+c2+';font-weight:700">'+pct+'%</td><td style="color:var(--mut)">'+r.rf+':'+r.ra+'</td><td>'+pills+'</td></tr>';}).join('');
+ return '<table><thead><tr><th>Соперник</th><th>Карт</th><th>W–L</th><th>%</th><th>Раунды</th><th>Последние</th></tr></thead><tbody>'+body+'</tbody></table>';}
+// current win/loss streak + WWLWW tiles
+function streakBox(){var sb=(D.scoreboards||[]);if(!sb.length)return '';
+ var res=sb.map(function(m){return m.myScore>m.oppScore;});
+ var last=res[res.length-1],cnt=0;for(var i=res.length-1;i>=0;i--){if(res[i]===last)cnt++;else break;}
+ var word=last?(cnt===1?'победа':'побед подряд'):(cnt===1?'поражение':'поражений подряд');
+ var tiles=res.slice(-12).map(function(w){return '<span class="wl '+(w?'w':'l')+'">'+(w?'W':'L')+'</span>';}).join('');
+ return '<div class="streak"><span class="stbig '+(last?'w':'l')+'">'+(last?'🔥':'❄️')+' '+cnt+' '+word+'</span><div class="wlrow">'+tiles+'</div></div>';}
 // player of the patch: best roster player by rating (with a minimum sample of maps)
 function playerOfWeek(){const cand=roster.filter(p=>p.stats&&p.stats.maps>0);if(!cand.length)return '';
  const maxM=cand.reduce((m,p)=>Math.max(m,p.stats.maps),0);const minM=Math.max(3,Math.round(maxM*0.5));
@@ -547,7 +584,7 @@ function render(){
  // INFO
  const pw=playerOfWeek(),ms=mapStats(),ft=formTiles(5);
  document.getElementById('s_info').innerHTML=`${pw?`<div class="box"><h3>Игрок патча</h3>${pw}</div>`:''}
-  <div class="box"><h3>Форма команды (${my})</h3>${ft}${teamForm()||'<span style="color:var(--mut)">Мало сыгранных карт</span>'}</div>
+  <div class="box"><h3>Форма команды (${my})</h3>${streakBox()}${ft}${teamForm()||'<span style="color:var(--mut)">Мало сыгранных карт</span>'}</div>
   ${ms?`<div class="box"><h3>Статистика по картам</h3>${ms}</div>`:''}
   <div class="box"><h3>Штаб</h3>${D.staff.map(s=>`<div class="staffrow"><span>${flag(s.country)} ${s.nick?s.first+" '"+s.nick+"' "+s.last:s.first+' '+s.last}</span><span style="color:var(--mut)">${s.role} · ${s.skill}</span></div>`).join('')}</div>`;
  // ROSTER
@@ -558,7 +595,7 @@ function render(){
  const calRow=t=>{const ic=TICON(t.name);const loc=[t.city,t.country].filter(Boolean).join(', ');const st=t.done?(t.winner?`🏆 ${t.winner}`:'завершён'):'предстоит';return `<div class="calrow" onclick='openTour(${JSON.stringify(t.name)})'>${ic?`<img class="rlogo" src="${ic}" style="width:34px;height:34px">`:`<div class="rlogo ini" style="background:var(--pan);font-size:14px;width:34px;height:34px">🏆</div>`}${tbadge(t.tier)}<div class="cinfo"><b>${t.name}</b><div class="cmeta">${loc||'—'} · призовой ${fmt(t.prize)} · ${'★'.repeat(Math.max(1,Math.round(t.rating)))}</div></div><div style="text-align:right;font-size:12px;color:${t.done?'var(--gold)':'var(--mut)'}">${st}</div></div>`;};
  document.getElementById('s_cal').innerHTML=`<div class="box"><h3>Предстоящие турниры · ${upc.length}</h3>${upc.map(calRow).join('')||'<span style="color:var(--mut)">Нет предстоящих</span>'}</div><div class="box"><h3>Завершённые · ${cdone.length}</h3>${cdone.map(calRow).join('')||'<span style="color:var(--mut)">Пока нет</span>'}</div>`;
  // MATCHES
- document.getElementById('s_matches').innerHTML=`<div class="box"><h3>Карты ${my} · детальная статистика</h3>${(D.scoreboards||[]).slice().reverse().map((sb,idx)=>{const win=sb.myScore>sb.oppScore;const sbTable=(title,players)=>`<div class="sbteam">${title}</div><table class="sbtab"><thead><tr><th>Игрок</th><th>K-D</th><th>+/-</th><th>ADR</th><th>Рейтинг</th></tr></thead><tbody>${players.map(p=>`<tr onclick='event.stopPropagation();openP(${JSON.stringify(p.nick)})'><td><div class="pcell">${avn(p.nick)}<span>${ctry(p.nick)} ${p.nick}</span>${p.mvp?' <span style=\'color:var(--gold)\'>★</span>':''}</div></td><td>${p.k}-${p.d}</td><td class="${p.k-p.d>=0?'win':'lose'}">${p.k-p.d>=0?'+':''}${p.k-p.d}</td><td>${p.adr}</td><td><b>${p.rating}</b></td></tr>`).join('')}</tbody></table>`;
+ document.getElementById('s_matches').innerHTML=`${h2hTable()?`<div class="box"><h3>⚔️ H2H · ${my} против соперников</h3>${h2hTable()}</div>`:''}<div class="box"><h3>Карты ${my} · детальная статистика</h3>${(D.scoreboards||[]).slice().reverse().map((sb,idx)=>{const win=sb.myScore>sb.oppScore;const sbTable=(title,players)=>`<div class="sbteam">${title}</div><table class="sbtab"><thead><tr><th>Игрок</th><th>K-D</th><th>+/-</th><th>ADR</th><th>Рейтинг</th></tr></thead><tbody>${players.map(p=>`<tr onclick='event.stopPropagation();openP(${JSON.stringify(p.nick)})'><td><div class="pcell">${avn(p.nick)}<span>${ctry(p.nick)} ${p.nick}</span>${p.mvp?' <span style=\'color:var(--gold)\'>★</span>':''}</div></td><td>${p.k}-${p.d}</td><td class="${p.k-p.d>=0?'win':'lose'}">${p.k-p.d>=0?'+':''}${p.k-p.d}</td><td>${p.adr}</td><td><b>${p.rating}</b></td></tr>`).join('')}</tbody></table>`;
    return `<div class="sbcard"><div class="sbhead" onclick="this.parentNode.querySelector('.sbbody').classList.toggle('open')">
      <div style="flex:1;text-align:right" class="${win?'win':'lose'}"><b style="cursor:pointer" onclick='event.stopPropagation();openT(${JSON.stringify(sb.my)})'>${sb.my}</b></div>
      <div class="sc">${sb.myScore}:${sb.oppScore}</div>
@@ -620,7 +657,7 @@ function render(){
  document.getElementById('ss').oninput=e=>{const q=e.target.value.toLowerCase();cur=list.filter(p=>p.nick.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));draw();};
  // AWARDS (EM Awards)
  const _aw=emAwards();
- document.getElementById('s_awards').innerHTML=`<div class="box"><h3 class="mvphead"><img class="mvpcoin" src="${MVP_IMG}" style="width:30px;height:30px">Награды сезона</h3>${_aw||'<span style="color:var(--mut)">Мало данных — нужно больше сыгранных карт</span>'}</div>`;
+ document.getElementById('s_awards').innerHTML=`${mvpRace()?`<div class="box"><h3 class="mvphead"><img class="mvpcoin" src="${MVP_IMG}" style="width:26px;height:26px">Гонка MVP сезона</h3>${mvpRace()}</div>`:''}<div class="box"><h3 class="mvphead"><img class="mvpcoin" src="${MVP_IMG}" style="width:30px;height:30px">Награды сезона</h3>${_aw||'<span style="color:var(--mut)">Мало данных — нужно больше сыгранных карт</span>'}</div>`;
  // TALENTS (wonderkids)
  const TAL=D.talents||[];
  document.getElementById('s_talents').innerHTML=`<div class="box"><h3>🌱 Молодые таланты · до 21 года · <span id="talCount">${TAL.length}</span></h3>
@@ -664,6 +701,7 @@ function render(){
  const salTotal=salRows.reduce((a,r)=>a+r.s,0),valTotal=salRows.reduce((a,r)=>a+r.v,0);
  const proj=[1,2,3].map(k=>D.money.cash+monthly*k);
  document.getElementById('s_fin').innerHTML=`
+  ${prizeBoard()?`<div class="box"><h3>🏆 Призовые игроков · топ по заработку за карьеру</h3>${prizeBoard()}</div>`:''}
   <div class="box"><h3>Финансы · ${fmt(D.money.cash)}</h3>
    <div class="chartkpis"><div class="c"><b style="color:var(--good)">+${fmt(sumInc)}</b><span>Доходы</span></div><div class="c"><b style="color:var(--bad)">${fmt(sumExp)}</b><span>Расходы</span></div><div class="c"><b style="color:${net>=0?'var(--good)':'var(--bad)'}">${net>=0?'+':''}${fmt(net)}</b><span>Итог</span></div><div class="c"><b style="color:${monthly>=0?'var(--good)':'var(--bad)'}">${monthly>=0?'+':''}${fmt(monthly)}</b><span>В месяц (сред.)</span></div></div>
    <h4 style="color:var(--mut);font-size:12px;margin:14px 0 6px">Доходы</h4>${incCats.map(([k,v])=>bar(k,v,'#3f9e57')).join('')||'<span style="color:var(--mut)">—</span>'}
