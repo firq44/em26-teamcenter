@@ -889,18 +889,24 @@ def build_ranking(D, team_won=None):
     # HLTV-style world ranking: every team by its stored rank, with a top-5 roster
     team_won = team_won or {}
     rosters = {}
+    tval = {}   # team -> total squad market value
     for p in D["players"].values():
         t = p["team"]
         if not t: continue
         rosters.setdefault(t, []).append((p["overall"], p["nick"], p.get("country", ""), p.get("age"),
                                           p.get("first", ""), p.get("last", "")))
+        tval[t] = tval.get(t, 0) + p.get("value", 0)
     tmed = D.get("teamMedalsAll", {})
     out = []
     for nm, rk in D["teamRank"].items():
-        rl = sorted(rosters.get(nm, []), key=lambda x: x[0], reverse=True)[:6]
+        full_roster = sorted(rosters.get(nm, []), key=lambda x: x[0], reverse=True)
+        rl = full_roster[:6]
+        top5 = [x[0] for x in full_roster[:5]]
+        avg_ovr = round(sum(top5) / len(top5), 1) if top5 else 0
         out.append({"rank": rk, "team": nm, "full": D["teamFull"].get(nm, nm),
                     "country": D["teamCountry"].get(nm, ""),
                     "medals": tmed.get(nm, [0, 0, 0]),
+                    "avg_ovr": avg_ovr, "sq_value": tval.get(nm, 0),
                     "won": [{"n": n, "m": 1 if mj else 0} for n, mj in team_won.get(nm, [])],
                     "roster": [{"nick": x[1], "overall": x[0], "country": x[2], "age": x[3],
                                 "first": x[4], "last": x[5]} for x in rl]})
@@ -1014,6 +1020,20 @@ def build_payload(D, photos, team_logo, tlogos):
                     "country": p.get("country", ""), "age": p.get("age"),
                     "value": p.get("value", 0), "role": role_single(p),
                     "first": p.get("first", ""), "last": p.get("last", "")} for p in fa]
+    # young high-potential players ("wonderkids") — young + big growth headroom
+    tal = [p for p in D["players"].values()
+           if p.get("age") and p["age"] <= 21 and (p.get("potential", 0) - p.get("overall", 0)) >= 3]
+    tal.sort(key=lambda p: (p.get("potential", 0), p.get("potential", 0) - p.get("overall", 0)), reverse=True)
+    talents = [{"nick": p["nick"], "first": p.get("first", ""), "last": p.get("last", ""),
+                "country": p.get("country", ""), "team": p.get("team", ""), "age": p["age"],
+                "overall": p.get("overall", 0), "potential": p.get("potential", 0),
+                "value": p.get("value", 0), "role": role_single(p)} for p in tal[:150]]
+    # most valuable players in the world (by market value)
+    tv = sorted(D["players"].values(), key=lambda p: p.get("value", 0), reverse=True)
+    top_value = [{"nick": p["nick"], "first": p.get("first", ""), "last": p.get("last", ""),
+                  "country": p.get("country", ""), "team": p.get("team", ""), "age": p.get("age"),
+                  "overall": p.get("overall", 0), "value": p.get("value", 0)}
+                 for p in tv if p.get("value", 0) > 0][:30]
     return {
         "my_team": my,
         "team": {"full": D["teamFull"].get(my, my), "country": D["teamCountry"].get(my, ""),
@@ -1035,6 +1055,8 @@ def build_payload(D, photos, team_logo, tlogos):
         "rank_hist": D.get("rankHist", {}),
         "transfers": D.get("transfers", [])[:250],
         "free_agents": free_agents,
+        "talents": talents,
+        "top_value": top_value,
         "tournaments": tourn_list,
         "calendar": calendar,
         "photos": photos,
