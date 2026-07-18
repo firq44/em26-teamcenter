@@ -906,7 +906,7 @@ def build_ranking(D, team_won=None):
         out.append({"rank": rk, "team": nm, "full": D["teamFull"].get(nm, nm),
                     "country": D["teamCountry"].get(nm, ""),
                     "medals": tmed.get(nm, [0, 0, 0]),
-                    "avg_ovr": avg_ovr, "sq_value": tval.get(nm, 0),
+                    "avg_ovr": avg_ovr, "sq_value": tval.get(nm, 0), "roster_size": len(full_roster),
                     "won": [{"n": n, "m": 1 if mj else 0} for n, mj in team_won.get(nm, [])],
                     "roster": [{"nick": x[1], "overall": x[0], "country": x[2], "age": x[3],
                                 "first": x[4], "last": x[5]} for x in rl]})
