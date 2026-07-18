@@ -311,6 +311,8 @@ function teamForm(){const sb=(D.scoreboards||[]);if(!sb.length)return '';
 const tlogoOf=t=>(D.logos||{})[t];
 // some simulated matches store a record-GUID instead of a real map name — treat as unknown
 function isGuidMap(m){return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(''+m);}
+// some records reference a player by an unresolved GUID instead of a nick — hide those
+function isGuid(v){return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(''+v);}
 // clean internal map name: "de_mirage" -> "Mirage"
 function mapClean(m){if(!m)return '?';if(isGuidMap(m))return 'Другая';let s=(''+m).replace(/^de_/i,'').replace(/^cs_/i,'');return s.charAt(0).toUpperCase()+s.slice(1);}
 // last-N form as opponent-logo tiles + WON/LOST (HLTV Stats-tab style)
@@ -549,7 +551,7 @@ function render(){
  const feedHTML=TRN.length?`<div class="box"><h3>🗞️ Свежие результаты</h3>${TRN.slice(0,12).map(t=>{const tb=(t.table||[]).slice(0,3);const ic=TICON(t.name);return `<div class="calrow" onclick='openTour(${JSON.stringify(t.name)})'>${ic?`<img class="rlogo" src="${ic}" style="width:34px;height:34px">`:`<div class="rlogo ini" style="width:34px;height:34px;background:var(--pan);font-size:14px">🏆</div>`}<div class="cinfo"><b>${t.name}${t.major?' <span class="mbadge" style="background:var(--gold);font-size:8px;padding:1px 5px;vertical-align:middle">MAJOR</span>':''}</b><div class="cmeta">${tb.map((r,i)=>`${medal3[i]} ${r.team}`).join('  ·  ')||'—'}</div></div></div>`;}).join('')}</div>`:'';
  document.getElementById('s_tourns').innerHTML=`${feedHTML}<div class="box"><h3>Турниры · ${TRN.length}</h3><div class="rlist">${TRN.map(t=>{const ic=TICON(t.name);const w=(t.table&&t.table[0])?t.table[0].team:'';return `<div class="rrow" onclick='openTour(${JSON.stringify(t.name)})'>${ic?`<img class="rlogo" src="${ic}">`:`<div class="rlogo ini" style="background:var(--pan2);font-size:16px">🏆</div>`}<div class="rt"><div><b>${t.name}${t.major?' <span class="mbadge" style="background:var(--gold);font-size:9px;padding:1px 5px;vertical-align:middle">MAJOR</span>':''}</b></div><div class="rr">🥇 ${w||'—'} · участников: ${(t.table||[]).length}</div></div></div>`}).join('')||'<span style="color:var(--mut)">Завершённых турниров пока нет</span>'}</div></div>`;
  // TRANSFERS + FREE AGENTS
- const TRF=D.transfers||[],FA=D.free_agents||[];
+ const TRF=(D.transfers||[]).filter(t=>!isGuid(t.nick)),FA=D.free_agents||[];
  const tcell=x=>x?`<span style="cursor:pointer" onclick='event.stopPropagation();openT(${JSON.stringify(x)})'>${tlogo2(x)?`<img class="itlogo" src="${tlogo2(x)}">`:''}${x}</span>`:'<span style="color:var(--mut)">св. агент</span>';
  const trfRow=t=>{const pp=P[t.nick];const fl=pp?flag(pp.country,true):'';return `<tr onclick='openP(${JSON.stringify(t.nick)})'><td><div class="pcell">${avn(t.nick)}<span>${fl} ${t.nick}</span></div></td><td style="text-align:left">${tcell(t.from)}</td><td style="color:var(--mut);text-align:center">→</td><td style="text-align:left">${tcell(t.to)}</td><td><b>${t.fee?fmt(t.fee):'—'}</b></td></tr>`;};
  const topTrf=TRF.filter(t=>t.fee>0).slice().sort((a,b)=>b.fee-a.fee).slice(0,15);
@@ -683,8 +685,8 @@ window.openT=function(team){if(!team)return;var t=(D.ranking||[]).find(function(
  var rosterRows=((t&&t.roster)||[]).map(function(r){return "<tr onclick='openP("+JSON.stringify(r.nick)+")'><td><div class=\"pcell\">"+av({nick:r.nick})+"<span>"+flag(r.country)+" "+r.nick+"</span></div></td><td>"+(r.age||'-')+"</td><td><b>"+(r.overall||'-')+"</b></td></tr>";}).join('');
  var badges=majBadge(won,'Чемпион');
  var rankDev=rankDevBox(team, t?t.rank:null);
- var joined=(D.transfers||[]).filter(function(x){return x.to===team;});
- var left=(D.transfers||[]).filter(function(x){return x.from===team;});
+ var joined=(D.transfers||[]).filter(function(x){return x.to===team&&!isGuid(x.nick);});
+ var left=(D.transfers||[]).filter(function(x){return x.from===team&&!isGuid(x.nick);});
  var moves='';
  if(joined.length||left.length){
   var mvrow=function(x,inb){return '<div class="mvrow"><span class="'+(inb?'mvin':'mvout')+'">'+(inb?'▶':'◀')+'</span>'+avn(x.nick)+'<span style="flex:1;min-width:0">'+ctry(x.nick)+' '+x.nick+'</span><span style="color:var(--mut);font-size:11px">'+(inb?('из '+(x.from||'св. агент')):('в '+(x.to||'св. агент')))+'</span></div>';};
