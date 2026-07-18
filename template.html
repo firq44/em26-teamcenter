@@ -187,6 +187,20 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 .ldrow .ldn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px}
 .ldrow .ldv{color:var(--gold);font-weight:700;font-variant-numeric:tabular-nums;flex:0 0 auto}
 .grow{color:var(--good);font-weight:700}
+/* season awards (nomination cards) */
+.awgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.awcard{background:var(--pan2);border-radius:8px;padding:12px;text-align:center;cursor:pointer;box-shadow:inset 0 0 0 1px var(--line)}
+.awcard:hover{background:#3e4b5a}
+.awlbl{font-size:11px;font-weight:700;color:var(--gold);margin-bottom:8px;min-height:30px;display:flex;align-items:center;justify-content:center;text-align:center}
+.awph{width:72px;height:84px;border-radius:6px;object-fit:cover;object-position:top;background:#dde2e7}
+.awnk{font-weight:700;margin-top:8px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.awrt{color:var(--mut);font-size:11px;margin-top:2px}
+/* nationality breakdown */
+.natrow{display:flex;align-items:center;gap:10px;margin:6px 0}
+.natc{width:150px;flex:0 0 auto;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nattrack{flex:1;height:16px;background:var(--dark);border-radius:4px;overflow:hidden}
+.natfill{height:100%;background:linear-gradient(90deg,var(--blue),var(--acc));border-radius:4px;min-width:2px}
+.natn{width:86px;text-align:right;flex:0 0 auto;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
 /* ===== HLTV-style shell: fixed top bar, wide layout, sidebar, sticky tabs ===== */
 body{padding-top:46px}
 .topbar{position:fixed;top:0;left:0;right:0;height:46px;background:#12171c;border-bottom:1px solid #0a0e12;z-index:50;box-shadow:0 2px 10px rgba(0,0,0,.35)}
@@ -332,6 +346,29 @@ function formChart(){const ms=D.my_matches;if(!ms.length)return '';
  return `<div class="chartkpis"><div class="c"><b>${wins}-${ms.length-wins}</b><span>W-L (посл. ${ms.length})</span></div><div class="c"><b>${Math.round(wins/ms.length*100)}%</b><span>Винрейт</span></div><div class="c"><b>#${T.rank||'-'}</b><span>Мировой ранг</span></div></div>
  <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><path d="${path}" fill="none" stroke="var(--gold)" stroke-width="2.5"/>${pts.map((v,i)=>`<circle cx="${xs(i).toFixed(0)}" cy="${ys(v).toFixed(0)}" r="2.5" fill="var(--acc)"/>`).join('')}</svg>`;}
 
+// derive a player's role from attributes (world players carry no explicit role)
+const RATTR={AWP:'9',IGL:'14',Entry:'7',Support:'8'};
+function clientRole(attrs){if(!attrs)return 'Rifler';let best='Rifler',bv=-1;for(const r in RATTR){const v=+attrs[RATTR[r]]||0;if(v>bv){bv=v;best=r;}}return bv>=13?best:'Rifler';}
+// season awards (EM Awards) — best player, rookie, per-role, top fragger
+function emAwards(){
+ const pool=Object.values(P).filter(p=>p.stats&&p.stats.maps>0);
+ if(pool.length<3)return '';
+ const maxMaps=pool.reduce((m,p)=>Math.max(m,p.stats.maps),0);const minMaps=Math.max(5,Math.round(maxMaps*0.4));
+ const q=pool.filter(p=>p.stats.maps>=minMaps);const base=q.length>=5?q:pool;
+ const best=arr=>arr.slice().sort((a,b)=>b.stats.rating-a.stats.rating)[0];
+ const noms=[['🏆 Игрок сезона',best(base)]];
+ const young=base.filter(p=>p.age&&p.age<=21);noms.push(['🌟 Лучший молодой',best(young.length?young:base.filter(p=>p.age&&p.age<=23))]);
+ const RL={AWP:'🎯 Лучший AWP',IGL:'🧠 Лучший IGL',Entry:'⚔️ Лучший Entry',Support:'🛡️ Лучший Support'};
+ ['AWP','IGL','Entry','Support'].forEach(r=>{const grp=base.filter(p=>p.attrs&&clientRole(p.attrs)===r);if(grp.length)noms.push([RL[r],best(grp)]);});
+ const fr=base.slice().sort((a,b)=>(b.stats.kpr||0)-(a.stats.kpr||0))[0];if(fr)noms.push(['💥 Топ фраггер',fr]);
+ return '<div class="awgrid">'+noms.filter(n=>n[1]).map(([lab,p])=>`<div class="awcard" onclick='openP(${JSON.stringify(p.nick)})'><div class="awlbl">${lab}</div><img class="awph" src="${photoURL(p)||SIL}" onerror="tcSil(this)"><div class="awnk">${flag(p.country,true)} ${p.nick}</div><div class="awrt">${p.stats.rating} рейтинг</div></div>`).join('')+'</div>';}
+// nationality breakdown: which countries field the most players / stars
+function natBreakdown(){
+ const cc={},seen={};
+ (D.ranking||[]).forEach(t=>(t.roster||[]).forEach(r=>{if(!r.country||seen[r.nick])return;seen[r.nick]=1;const c=cc[r.country]||(cc[r.country]={n:0,st:0});c.n++;if((r.overall||0)>=85)c.st++;}));
+ const rows=Object.entries(cc).map(([c,v])=>({c,n:v.n,st:v.st})).sort((a,b)=>b.n-a.n).slice(0,15);
+ if(!rows.length)return '';const mx=Math.max.apply(null,rows.map(r=>r.n));
+ return rows.map(r=>`<div class="natrow"><span class="natc">${flag(r.c)||''} ${r.c}</span><div class="nattrack"><div class="natfill" style="width:${Math.round(r.n/mx*100)}%"></div></div><span class="natn">${r.n}${r.st?` · <b style="color:var(--gold)">${r.st}★</b>`:''}</span></div>`).join('');}
 // stat leaders: top-3 podiums per category (min-maps filtered)
 function statLeaders(){
  const pool=Object.values(P).filter(p=>p.stats&&p.stats.maps>0);
@@ -399,7 +436,7 @@ function render(){
  <div id="views"></div>
  <div class="foot">EM2026 Team Center · авто-определение команды${D.live?' · 🟢 live из памяти игры':(D.saved_at?' · данные на момент сохранения игры: '+D.saved_at:'')}</div>
  </div><aside class="side">${sideHtml}</aside></div>`;
- const TABS=[['info','Info'],['roster','Roster'],['matches','Matches'],['rank','Рейтинг'],['tourns','Турниры'],['cal','Календарь'],['transfers','Трансферы'],['ach','Трофеи'],['stats','Stats'],['talents','Таланты'],['power','Сила'],['fin','Finances']];
+ const TABS=[['info','Info'],['roster','Roster'],['matches','Matches'],['rank','Рейтинг'],['tourns','Турниры'],['cal','Календарь'],['transfers','Трансферы'],['ach','Трофеи'],['stats','Stats'],['awards','Награды'],['talents','Таланты'],['power','Сила'],['fin','Finances']];
  const tb=document.getElementById('tabs'),vs=document.getElementById('views');
  TABS.forEach(([id,l],i)=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>show(id);tb.appendChild(b);const s=document.createElement('sec');s.id='s_'+id;vs.appendChild(s);if(!i){b.classList.add('on');s.classList.add('on');}});
  window.show=id=>{[...tb.children].forEach((b,i)=>b.classList.toggle('on',TABS[i][0]===id));[...vs.children].forEach(s=>s.classList.toggle('on',s.id==='s_'+id));if(id==='rank'){const me=document.querySelector('.rrow.me');if(me)me.scrollIntoView({block:'center'});}};
@@ -437,7 +474,8 @@ function render(){
  const trfRow=t=>{const pp=P[t.nick];const fl=pp?flag(pp.country,true):'';return `<tr onclick='openP(${JSON.stringify(t.nick)})'><td><div class="pcell">${avn(t.nick)}<span>${fl} ${t.nick}</span></div></td><td style="text-align:left">${tcell(t.from)}</td><td style="color:var(--mut);text-align:center">→</td><td style="text-align:left">${tcell(t.to)}</td><td><b>${t.fee?fmt(t.fee):'—'}</b></td></tr>`;};
  const topTrf=TRF.filter(t=>t.fee>0).slice().sort((a,b)=>b.fee-a.fee).slice(0,15);
  const faCtry=[...new Set(FA.map(p=>p.country).filter(Boolean))].sort();
- document.getElementById('s_transfers').innerHTML=`<div class="box"><h3>💸 Топ трансферы сезона · по сумме</h3>${trfCards()||'<span style="color:var(--mut)">Платных трансферов пока нет</span>'}</div>
+ const bargHTML=(D.bargains||[]).slice(0,20).map(p=>`<tr onclick='openP(${JSON.stringify(p.nick)})'><td><div class="pcell">${avn(p.nick)}<span>${flag(p.country,true)} ${p.nick}</span></div></td><td style="cursor:pointer" onclick='event.stopPropagation();openT(${JSON.stringify(p.team||"")})'>${p.team||'—'}</td><td>${roleTag(p.role)}</td><td>${p.age||'-'}</td><td><b>${p.overall||'-'}</b></td><td>${p.potential||'-'}</td><td><b style="color:var(--good)">${p.value?fmt(p.value):'—'}</b></td></tr>`).join('');
+ document.getElementById('s_transfers').innerHTML=`${bargHTML?`<div class="box"><h3>🔎 Выгодные покупки · сильный овр за низкую цену</h3><table><thead><tr><th>Игрок</th><th>Команда</th><th>Роль</th><th>Возр.</th><th>Овр</th><th>Потенц.</th><th>Стоимость</th></tr></thead><tbody>${bargHTML}</tbody></table></div>`:''}<div class="box"><h3>💸 Топ трансферы сезона · по сумме</h3>${trfCards()||'<span style="color:var(--mut)">Платных трансферов пока нет</span>'}</div>
   <div class="box"><h3>Все трансферы · ${TRF.length}</h3><table><thead><tr><th>Игрок</th><th>Откуда</th><th></th><th>Куда</th><th>Сумма</th></tr></thead><tbody>${TRF.map(trfRow).join('')||'<tr><td colspan="5" style="color:var(--mut)">Трансферов пока нет</td></tr>'}</tbody></table></div>
   <div class="box"><h3>Свободные агенты · <span id="faCount">${FA.length}</span></h3>
    <div class="flt">
@@ -473,6 +511,9 @@ function render(){
  document.getElementById('s_stats').innerHTML=`${_ld?`<div class="box"><h3>Лидеры по статистике</h3>${_ld}</div>`:''}<div class="box"><h3>Рейтинг игроков · минимум ${minMaps} карт (${list.length})</h3><input class="search" id="ss" placeholder="Поиск игрока/команды..."><table id="lb"><thead><tr><th>Игрок</th><th>Команда</th><th>Карт</th><th>K/D</th><th>ADR</th><th title="MVP турниров">MVP</th><th title="EVP турниров">EVP</th><th>Рейтинг</th></tr></thead><tbody></tbody></table></div>`;
  let cur=list;const draw=()=>{document.querySelector('#lb tbody').innerHTML=cur.slice(0,250).map((p,i)=>`<tr onclick='openP(${JSON.stringify(p.nick)})'><td><div class="pcell"><span class="sub" style="width:20px;text-align:right">${i+1}</span>${av(p)}<span>${flag(p.country)} ${p.nick}</span></div></td><td style="cursor:pointer" onclick='event.stopPropagation();openT(${JSON.stringify(p.team||"")})'>${p.team||'—'}</td><td>${p.stats.maps}</td><td>${p.stats.kd}</td><td>${p.stats.adr}</td><td>${p.mvp?'<b style="color:var(--gold)">'+p.mvp+'</b>':'0'}</td><td>${p.evp||0}</td><td><b>${p.stats.rating}</b></td></tr>`).join('');};draw();
  document.getElementById('ss').oninput=e=>{const q=e.target.value.toLowerCase();cur=list.filter(p=>p.nick.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));draw();};
+ // AWARDS (EM Awards)
+ const _aw=emAwards();
+ document.getElementById('s_awards').innerHTML=`<div class="box"><h3>🏅 Награды сезона</h3>${_aw||'<span style="color:var(--mut)">Мало данных — нужно больше сыгранных карт</span>'}</div>`;
  // TALENTS (wonderkids)
  const TAL=D.talents||[];
  document.getElementById('s_talents').innerHTML=`<div class="box"><h3>🌱 Молодые таланты · до 21 года · <span id="talCount">${TAL.length}</span></h3>
@@ -495,7 +536,7 @@ function render(){
  const byOvr=(D.ranking||[]).filter(t=>t.avg_ovr&&(t.roster_size||0)>=5&&!/National Team/i.test(t.full||t.team)).slice().sort((a,b)=>b.avg_ovr-a.avg_ovr).slice(0,50);
  const TV=D.top_value||[];
  document.getElementById('s_power').innerHTML=`<div class="box"><h3>💪 Power ranking составов · по среднему овру топ-5</h3><table><thead><tr><th>#</th><th>Команда</th><th>Ср. овр</th><th>Стоимость состава</th><th>Мир. ранг</th></tr></thead><tbody>${byOvr.map((t,i)=>`<tr onclick='openT(${JSON.stringify(t.team)})'><td>${i+1}</td><td><div class="pcell">${tlogo2(t.team)?`<img class="rlogo" style="width:24px;height:24px" src="${tlogo2(t.team)}">`:`<div class="rlogo ini" style="width:24px;height:24px;background:${col(t.team)}">${t.team.slice(0,2).toUpperCase()}</div>`}<span>${t.full||t.team}</span></div></td><td><b>${t.avg_ovr}</b></td><td>${t.sq_value?fmt(t.sq_value):'—'}</td><td style="color:var(--mut)">#${t.rank}</td></tr>`).join('')}</tbody></table></div>
-  <div class="box"><h3>💎 Самые дорогие игроки мира</h3><table><thead><tr><th>#</th><th>Игрок</th><th>Команда</th><th>Возр.</th><th>Овр</th><th>Стоимость</th></tr></thead><tbody>${TV.map((p,i)=>`<tr onclick='openP(${JSON.stringify(p.nick)})'><td>${i+1}</td><td><div class="pcell">${avn(p.nick)}<span>${flag(p.country,true)} ${p.nick}</span></div></td><td style="cursor:pointer" onclick='event.stopPropagation();openT(${JSON.stringify(p.team||"")})'>${p.team||'—'}</td><td>${p.age||'-'}</td><td>${p.overall||'-'}</td><td><b style="color:var(--gold)">${fmt(p.value)}</b></td></tr>`).join('')||'<tr><td colspan="6" style="color:var(--mut)">—</td></tr>'}</tbody></table></div>`;
+  <div class="box"><h3>💎 Самые дорогие игроки мира</h3><table><thead><tr><th>#</th><th>Игрок</th><th>Команда</th><th>Возр.</th><th>Овр</th><th>Стоимость</th></tr></thead><tbody>${TV.map((p,i)=>`<tr onclick='openP(${JSON.stringify(p.nick)})'><td>${i+1}</td><td><div class="pcell">${avn(p.nick)}<span>${flag(p.country,true)} ${p.nick}</span></div></td><td style="cursor:pointer" onclick='event.stopPropagation();openT(${JSON.stringify(p.team||"")})'>${p.team||'—'}</td><td>${p.age||'-'}</td><td>${p.overall||'-'}</td><td><b style="color:var(--gold)">${fmt(p.value)}</b></td></tr>`).join('')||'<tr><td colspan="6" style="color:var(--mut)">—</td></tr>'}</tbody></table></div>${natBreakdown()?`<div class="box"><h3>🗺️ Разбивка по странам · игроки топ-команд</h3>${natBreakdown()}</div>`:''}`;
  // FIN
  // FIN — breakdown, salaries, projection, ledger
  const TX=D.txns||[];

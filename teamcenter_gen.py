@@ -1028,6 +1028,14 @@ def build_payload(D, photos, team_logo, tlogos):
                 "country": p.get("country", ""), "team": p.get("team", ""), "age": p["age"],
                 "overall": p.get("overall", 0), "potential": p.get("potential", 0),
                 "value": p.get("value", 0), "role": role_single(p)} for p in tal[:150]]
+    # best value-for-money buys: a strong overall for a low market value. Each $15k of
+    # value "costs" one overall point, so cheap-but-good players float to the top.
+    brg = [p for p in D["players"].values() if p.get("value", 0) > 0 and p.get("overall", 0) >= 55]
+    brg.sort(key=lambda p: p.get("overall", 0) - p.get("value", 0) / 15000.0, reverse=True)
+    bargains = [{"nick": p["nick"], "first": p.get("first", ""), "last": p.get("last", ""),
+                 "country": p.get("country", ""), "team": p.get("team", ""), "age": p.get("age"),
+                 "overall": p.get("overall", 0), "potential": p.get("potential", 0),
+                 "value": p.get("value", 0), "role": role_single(p)} for p in brg[:60]]
     # most valuable players in the world (by market value)
     tv = sorted(D["players"].values(), key=lambda p: p.get("value", 0), reverse=True)
     top_value = [{"nick": p["nick"], "first": p.get("first", ""), "last": p.get("last", ""),
@@ -1057,6 +1065,7 @@ def build_payload(D, photos, team_logo, tlogos):
         "free_agents": free_agents,
         "talents": talents,
         "top_value": top_value,
+        "bargains": bargains,
         "tournaments": tourn_list,
         "calendar": calendar,
         "photos": photos,
