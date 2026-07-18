@@ -223,8 +223,10 @@ function teamForm(){const sb=(D.scoreboards||[]);if(!sb.length)return '';
  return kpis+pills+svg;}
 // team logo helper shared by several widgets
 const tlogoOf=t=>(D.logos||{})[t];
+// some simulated matches store a record-GUID instead of a real map name — treat as unknown
+function isGuidMap(m){return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(''+m);}
 // clean internal map name: "de_mirage" -> "Mirage"
-function mapClean(m){if(!m)return '?';let s=(''+m).replace(/^de_/i,'').replace(/^cs_/i,'');return s.charAt(0).toUpperCase()+s.slice(1);}
+function mapClean(m){if(!m)return '?';if(isGuidMap(m))return 'Другая';let s=(''+m).replace(/^de_/i,'').replace(/^cs_/i,'');return s.charAt(0).toUpperCase()+s.slice(1);}
 // last-N form as opponent-logo tiles + WON/LOST (HLTV Stats-tab style)
 function formTiles(n){const sb=(D.scoreboards||[]);if(!sb.length)return '';
  const last=sb.slice(-(n||5)).reverse();
@@ -232,11 +234,13 @@ function formTiles(n){const sb=(D.scoreboards||[]);if(!sb.length)return '';
   return `<div class="ftile" onclick='event.stopPropagation();openT(${JSON.stringify(m.opp)})'>${l?`<img src="${l}">`:`<div class="fini" style="background:${col(m.opp)}">${(m.opp||'?').slice(0,2).toUpperCase()}</div>`}<div class="fon" title="${m.opp||''}">${m.opp||'—'}</div><div class="fsc">${m.myScore}:${m.oppScore}</div><div class="fres ${win?'w':'l'}">${win?'WON':'LOST'}</div></div>`;}).join('')+'</div>';}
 // map win statistics from per-map scoreboards
 function mapStats(){const sb=(D.scoreboards||[]);if(!sb.length)return '';
- const agg={};sb.forEach(m=>{const k=m.map||'?';const a=agg[k]||(agg[k]={w:0,n:0});a.n++;if(m.myScore>m.oppScore)a.w++;});
- const rows=Object.entries(agg).map(([m,a])=>({m,w:a.w,n:a.n,pct:a.w/a.n})).sort((x,y)=>y.pct-x.pct||y.n-x.n);
+ const agg={};sb.forEach(m=>{let k=m.map||'?';if(isGuidMap(k))k='__other';const a=agg[k]||(agg[k]={w:0,n:0});a.n++;if(m.myScore>m.oppScore)a.w++;});
+ const rows=Object.entries(agg).map(([m,a])=>({m,w:a.w,n:a.n,pct:a.w/a.n}));
+ rows.sort((x,y)=>{if(x.m==='__other')return 1;if(y.m==='__other')return -1;return y.pct-x.pct||y.n-x.n;});
  if(!rows.length)return '';
  const colFor=p=>p>=0.6?'#4ba85a':p>=0.4?'#e0a53a':'#c1504a';
- return rows.map(r=>`<div class="maprow"><div class="mn">${mapClean(r.m)}</div><div class="mtrack"><div class="mfill" style="width:${Math.round(r.pct*100)}%;background:${colFor(r.pct)}"></div></div><div class="mpct">${Math.round(r.pct*100)}% <span>(${r.w}-${r.n-r.w})</span></div></div>`).join('');}
+ const label=m=>m==='__other'?'Другие':mapClean(m);
+ return rows.map(r=>`<div class="maprow"><div class="mn">${label(r.m)}</div><div class="mtrack"><div class="mfill" style="width:${Math.round(r.pct*100)}%;background:${colFor(r.pct)}"></div></div><div class="mpct">${Math.round(r.pct*100)}% <span>(${r.w}-${r.n-r.w})</span></div></div>`).join('');}
 // player of the patch: best roster player by rating (with a minimum sample of maps)
 function playerOfWeek(){const cand=roster.filter(p=>p.stats&&p.stats.maps>0);if(!cand.length)return '';
  const maxM=cand.reduce((m,p)=>Math.max(m,p.stats.maps),0);const minM=Math.max(3,Math.round(maxM*0.5));
