@@ -1,0 +1,5 @@
+# Store every file verbatim — no line-ending conversion — so the bytes GitHub
+# serves are byte-for-byte identical to what make_manifest.py hashed. The
+# installer/updater verify SHA256 on download, so any EOL munging would reject
+# every text file (configs, .py, .html, .json).
+* -text
