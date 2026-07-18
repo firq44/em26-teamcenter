@@ -252,6 +252,10 @@ def _parse_mapstats_file(f, my):
         rec = A(recv)
         if not rec or len(rec) < 5: continue
         flat = M(rec[4])
+        # The readable map name ("Ancient", "Mirage", "Dust2") lives at slot index [1]
+        # in the rec[4] "flat" structure. The rec[2] teams structure carries a GUID
+        # there instead, so the scoreboard map must be read from here.
+        readable_map = None
         if flat:
             # The per-slot "MVP" field the game exposes is unreliable (near-constant,
             # so every teammate ended up with the same total). Instead we award the
@@ -263,6 +267,9 @@ def _parse_mapstats_file(f, my):
                 sl = A(slv)
                 if not sl or len(sl) < 24: continue
                 nk = str(pk)
+                if readable_map is None:
+                    _rm = S(sl[1])
+                    if _rm: readable_map = _rm
                 k = L(sl[14]); dd = L(sl[15]); aa = L(sl[16]); dmg = L(sl[18])
                 rr = A(sl[22]); rounds = len(rr) if rr else 0
                 rating = 0.45 + 0.55*(k/max(1, dd))*(dmg/max(1, rounds or 1)/78.0)
@@ -301,7 +308,7 @@ def _parse_mapstats_file(f, my):
                 if allpl:
                     top = max(allpl, key=lambda x: x["rating"])
                     top["mvp"] = 1
-                fsb.append({"map": mapn or "", "my": my, "opp": opp,
+                fsb.append({"map": readable_map or mapn or "", "my": my, "opp": opp,
                     "myScore": scores.get(my,0), "oppScore": scores.get(opp,0),
                     "myPlayers": per[my], "oppPlayers": per[opp]})
     return fa, fsb
@@ -311,7 +318,7 @@ def aggregate(D, save_dir):
     files = sorted(glob.glob(os.path.join(save_dir, "MapOverallRecord", "MapStats_*.mpack")))
     # per-file cache: only newly written match files get re-parsed, so a just-finished
     # match is picked up in ~1.5s instead of re-scanning every file (~10s)
-    fc = load_cache(CACHE_AGGFILES, "v2")
+    fc = load_cache(CACHE_AGGFILES, "v3")
     if not isinstance(fc, dict): fc = {}
     merged = {}   # nick -> [maps,k,d,a,dmg,mvp,rounds]
     sboards = []
@@ -336,7 +343,7 @@ def aggregate(D, save_dir):
     for k in list(fc.keys()):
         if k not in files:
             del fc[k]; changed = True
-    if changed: save_cache(CACHE_AGGFILES, "v2", fc)
+    if changed: save_cache(CACHE_AGGFILES, "v3", fc)
     D["scoreboards"] = sboards
     for nk, g in merged.items():
         rounds = max(1, g[6]); dd = max(1, g[2])
