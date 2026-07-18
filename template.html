@@ -134,6 +134,43 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 .cbcard.maj{box-shadow:inset 0 0 0 2px var(--gold);background:#2b2512}
 .cbcard img{width:64px;height:64px;object-fit:contain}
 .cbcard .cbn{font-size:11px;font-weight:600;text-align:center;line-height:1.25}
+/* player of the patch */
+.potw{display:flex;align-items:center;gap:16px;background:linear-gradient(90deg,#2b2512,var(--pan2));border-radius:8px;padding:14px 16px;box-shadow:inset 0 0 0 1px var(--gold);cursor:pointer}
+.potw .pimg{width:62px;height:72px;border-radius:6px;object-fit:cover;object-position:top;flex:0 0 auto;background:#dde2e7}
+.potw .pmid{flex:1;min-width:0}
+.potw .plbl{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--gold);font-weight:800}
+.potw .pnk{font-size:20px;font-weight:800;margin:2px 0}
+.potw .psub{color:var(--mut);font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.potw .pbig{text-align:center;flex:0 0 auto}
+.potw .pbig b{font-size:30px;font-weight:800;color:var(--gold);display:block;line-height:1}
+.potw .pbig span{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+/* form tiles with opponent logos */
+.ftiles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.ftile{flex:1;min-width:76px;max-width:118px;background:var(--pan2);border-radius:7px;padding:10px 6px;text-align:center;box-shadow:inset 0 0 0 1px var(--line);cursor:pointer}
+.ftile img{width:34px;height:34px;object-fit:contain;margin:0 auto 6px;display:block}
+.ftile .fini{width:34px;height:34px;border-radius:5px;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:#1a1f24}
+.ftile .fon{font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ftile .fsc{font-size:11px;color:var(--tx);margin-top:1px;font-weight:700}
+.ftile .fres{margin-top:6px;font-size:10px;font-weight:800;padding:2px 0;border-radius:4px;color:#fff}
+.ftile .fres.w{background:#2f7d43}.ftile .fres.l{background:#a33b34}
+/* map win statistics */
+.maprow{display:flex;align-items:center;gap:10px;margin:6px 0}
+.maprow .mn{width:92px;flex:0 0 auto;font-weight:700;font-size:12.5px}
+.maprow .mtrack{flex:1;height:20px;background:var(--dark);border-radius:4px;overflow:hidden}
+.maprow .mfill{height:100%;border-radius:4px;min-width:2px}
+.maprow .mpct{width:96px;text-align:right;flex:0 0 auto;font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
+.maprow .mpct span{color:var(--mut);font-weight:400;font-size:11px}
+/* transfer cards */
+.trfcards{display:flex;gap:10px;overflow-x:auto;padding:2px 0 8px}
+.trfcard{flex:0 0 auto;width:206px;background:var(--pan2);border-radius:8px;padding:12px;box-shadow:inset 0 0 0 1px var(--line);cursor:pointer}
+.trfcard .th{display:flex;align-items:center;gap:9px}
+.trfcard .tph{width:40px;height:46px;border-radius:5px;object-fit:cover;object-position:top;flex:0 0 auto;background:#dde2e7}
+.trfcard .tnk{font-weight:700;font-size:14px}
+.trfcard .tmove{display:flex;align-items:center;justify-content:center;gap:10px;margin:11px 0 9px}
+.trfcard .tmove img{width:30px;height:30px;object-fit:contain}
+.trfcard .tmove .tini{width:30px;height:30px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px;color:#1a1f24}
+.trfcard .tmove .arr{color:var(--gold);font-size:18px;font-weight:800}
+.trfcard .tfee{text-align:center;font-weight:800;color:var(--gold);font-size:15px}
 </style></head><body><div class="wrap" id="app"></div>
 <div class="modal" id="modal" onclick="if(event.target===this)this.classList.remove('on')"><div class="mbox" id="mbox"></div></div>
 <script>
@@ -184,6 +221,33 @@ function teamForm(){const sb=(D.scoreboards||[]);if(!sb.length)return '';
  const kpis=`<div class="chartkpis"><div class="c"><b>${wins}-${n-wins}</b><span>W-L (${n} карт)</span></div><div class="c"><b>${Math.round(wins/n*100)}%</b><span>Винрейт</span></div><div class="c"><b>#${T.rank||'-'}</b><span>Мировой ранг</span></div></div>`;
  const svg=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><path d="${area}" fill="rgba(240,168,58,.12)"/><path d="${path}" fill="none" stroke="var(--gold)" stroke-width="2.5"/>${pts.map((v,i)=>`<circle cx="${xs(i).toFixed(0)}" cy="${ys(v).toFixed(0)}" r="2.5" fill="var(--acc)"/>`).join('')}</svg>`;
  return kpis+pills+svg;}
+// team logo helper shared by several widgets
+const tlogoOf=t=>(D.logos||{})[t];
+// clean internal map name: "de_mirage" -> "Mirage"
+function mapClean(m){if(!m)return '?';let s=(''+m).replace(/^de_/i,'').replace(/^cs_/i,'');return s.charAt(0).toUpperCase()+s.slice(1);}
+// last-N form as opponent-logo tiles + WON/LOST (HLTV Stats-tab style)
+function formTiles(n){const sb=(D.scoreboards||[]);if(!sb.length)return '';
+ const last=sb.slice(-(n||5)).reverse();
+ return '<div class="ftiles">'+last.map(m=>{const win=m.myScore>m.oppScore;const l=tlogoOf(m.opp);
+  return `<div class="ftile" onclick='event.stopPropagation();openT(${JSON.stringify(m.opp)})'>${l?`<img src="${l}">`:`<div class="fini" style="background:${col(m.opp)}">${(m.opp||'?').slice(0,2).toUpperCase()}</div>`}<div class="fon" title="${m.opp||''}">${m.opp||'—'}</div><div class="fsc">${m.myScore}:${m.oppScore}</div><div class="fres ${win?'w':'l'}">${win?'WON':'LOST'}</div></div>`;}).join('')+'</div>';}
+// map win statistics from per-map scoreboards
+function mapStats(){const sb=(D.scoreboards||[]);if(!sb.length)return '';
+ const agg={};sb.forEach(m=>{const k=m.map||'?';const a=agg[k]||(agg[k]={w:0,n:0});a.n++;if(m.myScore>m.oppScore)a.w++;});
+ const rows=Object.entries(agg).map(([m,a])=>({m,w:a.w,n:a.n,pct:a.w/a.n})).sort((x,y)=>y.pct-x.pct||y.n-x.n);
+ if(!rows.length)return '';
+ const colFor=p=>p>=0.6?'#4ba85a':p>=0.4?'#e0a53a':'#c1504a';
+ return rows.map(r=>`<div class="maprow"><div class="mn">${mapClean(r.m)}</div><div class="mtrack"><div class="mfill" style="width:${Math.round(r.pct*100)}%;background:${colFor(r.pct)}"></div></div><div class="mpct">${Math.round(r.pct*100)}% <span>(${r.w}-${r.n-r.w})</span></div></div>`).join('');}
+// player of the patch: best roster player by rating (with a minimum sample of maps)
+function playerOfWeek(){const cand=roster.filter(p=>p.stats&&p.stats.maps>0);if(!cand.length)return '';
+ const maxM=cand.reduce((m,p)=>Math.max(m,p.stats.maps),0);const minM=Math.max(3,Math.round(maxM*0.5));
+ const pool=cand.filter(p=>p.stats.maps>=minM);const list=(pool.length?pool:cand).slice().sort((a,b)=>b.stats.rating-a.stats.rating);
+ const p=list[0];if(!p)return '';const s=p.stats;const src=photoURL(p)||SIL;
+ return `<div class="potw" onclick='openP(${JSON.stringify(p.nick)})'><img class="pimg" src="${src}" onerror="tcSil(this)"><div class="pmid"><div class="plbl">★ Игрок патча</div><div class="pnk">${flag(p.country)||''} ${p.nick}</div><div class="psub">${[p.first,p.last].filter(Boolean).join(' ')} ${roleTag(p.role)||''} <span>K/D ${s.kd} · ADR ${s.adr} · ${s.maps} карт</span></div></div><div class="pbig"><b>${s.rating}</b><span>Рейтинг</span></div></div>`;}
+// top transfers as HLTV-style cards: photo + from-logo → to-logo + fee
+function trfCards(){const TRF=D.transfers||[];const top=TRF.filter(t=>t.fee>0).slice().sort((a,b)=>b.fee-a.fee).slice(0,12);if(!top.length)return '';
+ const side=x=>{const l=tlogoOf(x);return l?`<img src="${l}">`:`<div class="tini" style="background:${col(x||'?')}">${(x||'FA').slice(0,2).toUpperCase()}</div>`;};
+ return '<div class="trfcards">'+top.map(t=>{const pp=P[t.nick]||{nick:t.nick};const src=photoURL(pp)||SIL;
+  return `<div class="trfcard" onclick='openP(${JSON.stringify(t.nick)})'><div class="th"><img class="tph" src="${src}" onerror="tcSil(this)"><div><div class="tnk">${pp.country?flag(pp.country,true):''} ${t.nick}</div><div class="sub">${t.age?t.age+' лет':'&nbsp;'}</div></div></div><div class="tmove">${side(t.from)}<span class="arr">→</span>${side(t.to)}</div><div class="tfee">${fmt(t.fee)}</div></div>`;}).join('')+'</div>';}
 // radar/pizza chart of grouped attributes (FM-style)
 const RGRP=[['Аим',[0,2,9]],['Реакция',[1,3]],['Клатч',[4,12]],['Тактика',[5,6,15]],['Энтри',[7,10]],['Саппорт',[8,13]],['Лидерство',[14,16]],['Стабильн.',[11,17,18,19]]];
 function radarSVG(attrs){
@@ -243,7 +307,10 @@ function render(){
  TABS.forEach(([id,l],i)=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>show(id);tb.appendChild(b);const s=document.createElement('sec');s.id='s_'+id;vs.appendChild(s);if(!i){b.classList.add('on');s.classList.add('on');}});
  window.show=id=>{[...tb.children].forEach((b,i)=>b.classList.toggle('on',TABS[i][0]===id));[...vs.children].forEach(s=>s.classList.toggle('on',s.id==='s_'+id));if(id==='rank'){const me=document.querySelector('.rrow.me');if(me)me.scrollIntoView({block:'center'});}};
  // INFO
- document.getElementById('s_info').innerHTML=`<div class="box"><h3>Форма команды (${my})</h3>${teamForm()||'<span style="color:var(--mut)">Мало сыгранных карт</span>'}</div>
+ const pw=playerOfWeek(),ms=mapStats(),ft=formTiles(5);
+ document.getElementById('s_info').innerHTML=`${pw?`<div class="box"><h3>Игрок патча</h3>${pw}</div>`:''}
+  <div class="box"><h3>Форма команды (${my})</h3>${ft}${teamForm()||'<span style="color:var(--mut)">Мало сыгранных карт</span>'}</div>
+  ${ms?`<div class="box"><h3>Статистика по картам</h3>${ms}</div>`:''}
   <div class="box"><h3>Штаб</h3>${D.staff.map(s=>`<div class="staffrow"><span>${flag(s.country)} ${s.nick?s.first+" '"+s.nick+"' "+s.last:s.first+' '+s.last}</span><span style="color:var(--mut)">${s.role} · ${s.skill}</span></div>`).join('')}</div>`;
  // ROSTER
  document.getElementById('s_roster').innerHTML=`<div class="box"><table><thead><tr><th>Игрок</th><th>Роль</th><th>Возр.</th><th>Овр</th><th>Стоим.</th><th>Карт</th><th>K/D</th><th>ADR</th><th title="MVP турниров">MVP</th><th title="EVP турниров">EVP</th><th>Рейтинг</th></tr></thead><tbody>${roster.map(p=>{const s=stat(p);return `<tr onclick='openP(${JSON.stringify(p.nick)})'><td><div class="pcell">${av(p)}<div><div>${flag(p.country)} ${p.nick}</div><div class="sub">${[p.first,p.last].filter(Boolean).join(' ')}</div></div></div></td><td>${roleTag(p.role)}</td><td>${p.age||'-'}</td><td>${p.overall||'-'}</td><td>${p.value?fmt(p.value):'—'}</td><td>${s.maps}</td><td>${s.kd}</td><td>${s.adr}</td><td>${p.mvp?'<b style="color:var(--gold)">'+p.mvp+'</b>':'0'}</td><td>${p.evp||0}</td><td><b>${s.rating}</b></td></tr>`}).join('')}</tbody></table></div>`;
@@ -273,7 +340,7 @@ function render(){
  const trfRow=t=>{const pp=P[t.nick];const fl=pp?flag(pp.country,true):'';return `<tr onclick='openP(${JSON.stringify(t.nick)})'><td><div class="pcell">${avn(t.nick)}<span>${fl} ${t.nick}</span></div></td><td style="text-align:left">${tcell(t.from)}</td><td style="color:var(--mut);text-align:center">→</td><td style="text-align:left">${tcell(t.to)}</td><td><b>${t.fee?fmt(t.fee):'—'}</b></td></tr>`;};
  const topTrf=TRF.filter(t=>t.fee>0).slice().sort((a,b)=>b.fee-a.fee).slice(0,15);
  const faCtry=[...new Set(FA.map(p=>p.country).filter(Boolean))].sort();
- document.getElementById('s_transfers').innerHTML=`<div class="box"><h3>💸 Топ трансферы сезона · по сумме</h3><table><thead><tr><th>Игрок</th><th>Откуда</th><th></th><th>Куда</th><th>Сумма</th></tr></thead><tbody>${topTrf.map(trfRow).join('')||'<tr><td colspan="5" style="color:var(--mut)">Платных трансферов пока нет</td></tr>'}</tbody></table></div>
+ document.getElementById('s_transfers').innerHTML=`<div class="box"><h3>💸 Топ трансферы сезона · по сумме</h3>${trfCards()||'<span style="color:var(--mut)">Платных трансферов пока нет</span>'}</div>
   <div class="box"><h3>Все трансферы · ${TRF.length}</h3><table><thead><tr><th>Игрок</th><th>Откуда</th><th></th><th>Куда</th><th>Сумма</th></tr></thead><tbody>${TRF.map(trfRow).join('')||'<tr><td colspan="5" style="color:var(--mut)">Трансферов пока нет</td></tr>'}</tbody></table></div>
   <div class="box"><h3>Свободные агенты · <span id="faCount">${FA.length}</span></h3>
    <div class="flt">
