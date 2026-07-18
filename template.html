@@ -220,6 +220,21 @@ body{padding-top:46px}
 .tb-stat{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
 .tb-stat b{color:var(--tx);font-size:14px;margin-left:6px;font-variant-numeric:tabular-nums}
 .tb-stat b.cash{color:var(--good)}
+.tb-search{position:relative;margin-left:20px;flex:0 1 300px}
+.tb-search input{width:100%;background:var(--dark);border:1px solid var(--line);border-radius:6px;color:var(--tx);padding:7px 11px;font-size:12px;font-family:inherit}
+.tb-search input:focus{outline:none;border-color:var(--blue)}
+.gsres{display:none;position:absolute;top:38px;left:0;right:0;background:var(--pan);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,.5);max-height:340px;overflow:auto;z-index:60}
+.gsrow{display:flex;align-items:center;gap:9px;padding:8px 11px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px}
+.gsrow:hover{background:var(--pan2)}
+.gsrow img{width:24px;height:24px;object-fit:cover;object-position:top;border-radius:4px;flex:0 0 auto;background:#20272e}
+.gsrow .gsi{width:24px;height:24px;flex:0 0 auto}
+.gsrow .gsn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.gsrow .gstag{color:var(--mut);font-size:10px;text-transform:uppercase;letter-spacing:.4px;flex:0 0 auto}
+th.srt-th:hover{color:var(--tx)}
+.pzcell{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.pzbar{flex:0 1 80px;height:8px;background:var(--dark);border-radius:3px;overflow:hidden}
+.pzbar i{display:block;height:100%;background:linear-gradient(90deg,#c98a1e,var(--gold))}
+.pzcell b{min-width:64px;text-align:right;font-variant-numeric:tabular-nums}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
 .main{min-width:0}
 .side{position:sticky;top:58px;display:flex;flex-direction:column;gap:12px}
@@ -376,6 +391,59 @@ function natBreakdown(){
  const rows=Object.entries(cc).map(([c,v])=>({c,n:v.n,st:v.st})).sort((a,b)=>b.n-a.n).slice(0,15);
  if(!rows.length)return '';const mx=Math.max.apply(null,rows.map(r=>r.n));
  return rows.map(r=>`<div class="natrow"><span class="natc">${flag(r.c)||''} ${r.c}</span><div class="nattrack"><div class="natfill" style="width:${Math.round(r.n/mx*100)}%"></div></div><span class="natn">${r.n}${r.st?` · <b style="color:var(--gold)">${r.st}★</b>`:''}</span></div>`).join('');}
+// global search in the top bar: any player or team
+function initSearch(){
+ var inp=document.getElementById('gsearch'),res=document.getElementById('gsres');
+ if(!inp)return;
+ var players=Object.values(P),teams=(D.ranking||[]);
+ var pick=function(fn,arg){res.style.display='none';inp.value='';fn(arg);};
+ inp.oninput=function(){
+  var q=inp.value.trim().toLowerCase();res.innerHTML='';
+  if(q.length<2){res.style.display='none';return;}
+  var tm=teams.filter(function(t){return (t.team||'').toLowerCase().indexOf(q)>=0||(t.full||'').toLowerCase().indexOf(q)>=0;}).slice(0,4);
+  var pm=players.filter(function(p){return p.nick&&p.nick.toLowerCase().indexOf(q)>=0;}).slice(0,6);
+  if(!tm.length&&!pm.length){res.innerHTML='<div class="gsrow" style="color:var(--mut);cursor:default">Ничего не найдено</div>';res.style.display='block';return;}
+  tm.forEach(function(t){var d=document.createElement('div');d.className='gsrow';var lg=(D.logos||{})[t.team];d.innerHTML=(lg?'<img src="'+lg+'">':'<span class="gsi"></span>')+'<span class="gsn">'+(t.full||t.team)+'</span><span class="gstag">команда · #'+t.rank+'</span>';d.onclick=function(){pick(openT,t.team);};res.appendChild(d);});
+  pm.forEach(function(p){var d=document.createElement('div');d.className='gsrow';var ph=photoURL(p);d.innerHTML=(ph?'<img src="'+ph+'" onerror="tcSil(this)">':'<span class="gsi"></span>')+'<span class="gsn">'+p.nick+'</span><span class="gstag">'+(p.team||'игрок')+'</span>';d.onclick=function(){pick(openP,p.nick);};res.appendChild(d);});
+  res.style.display='block';
+ };
+ document.addEventListener('click',function(e){if(inp!==e.target&&!res.contains(e.target))res.style.display='none';});
+}
+// make any <table> sortable by clicking a column header
+function makeSortable(table){
+ if(!table||table.__srt||!table.tHead)return;table.__srt=1;
+ var ths=table.tHead.rows[0].cells;
+ Array.prototype.forEach.call(ths,function(th,ci){
+  th.classList.add('srt-th');th.style.cursor='pointer';var dir=1;
+  th.onclick=function(e){if(e&&e.stopPropagation)e.stopPropagation();
+   var tb=table.tBodies[0];if(!tb)return;var rows=Array.prototype.slice.call(tb.rows);
+   var num=function(s){var m=(''+s).replace(/[^0-9.\-]/g,'');return (m===''||m==='-'||m==='.')?null:parseFloat(m);};
+   rows.sort(function(a,b){var x=(a.cells[ci]?a.cells[ci].textContent:'').trim(),y=(b.cells[ci]?b.cells[ci].textContent:'').trim();var nx=num(x),ny=num(y);if(nx!=null&&ny!=null)return (nx-ny)*dir;return x.localeCompare(y,'ru')*dir;});
+   dir=-dir;rows.forEach(function(r){tb.appendChild(r);});
+  };
+ });
+}
+function applySort(){document.querySelectorAll('#views table').forEach(makeSortable);}
+// league analytics: age & overall distributions + youngest/oldest squads
+function leagueAnalytics(){
+ var players={},teamAge={};
+ (D.ranking||[]).forEach(function(t){
+  (t.roster||[]).forEach(function(r){if(!players[r.nick])players[r.nick]={age:r.age,ovr:r.overall};});
+  var ta=(t.roster||[]).map(function(r){return r.age;}).filter(Boolean);
+  if(ta.length>=3&&(t.roster_size||0)>=5&&!/National Team/i.test(t.full||t.team))teamAge[t.team]={full:t.full||t.team,avg:ta.reduce(function(a,b){return a+b;},0)/ta.length};
+ });
+ var pl=Object.values(players);if(pl.length<10)return '';
+ var ageB=[['≤18',0],['19-21',0],['22-24',0],['25-27',0],['28-30',0],['31+',0]];
+ var ovrB=[['<60',0],['60-69',0],['70-79',0],['80-84',0],['85-89',0],['90+',0]];
+ pl.forEach(function(p){var a=p.age;if(a){ageB[a<=18?0:a<=21?1:a<=24?2:a<=27?3:a<=30?4:5][1]++;}var o=p.ovr;if(o){ovrB[o<60?0:o<70?1:o<80?2:o<85?3:o<90?4:5][1]++;}});
+ var bars=function(bk){var mx=Math.max.apply(null,bk.map(function(b){return b[1];}))||1;return bk.map(function(b){return '<div class="maprow"><div class="mn" style="width:64px">'+b[0]+'</div><div class="mtrack"><div class="mfill" style="width:'+Math.round(b[1]/mx*100)+'%;background:var(--blue)"></div></div><div class="mpct">'+b[1]+'</div></div>';}).join('');};
+ var teams=Object.values(teamAge).sort(function(a,b){return a.avg-b.avg;});
+ var sq=function(arr){return arr.map(function(t){return '<div class="mvrow"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.full+'</span><b>'+t.avg.toFixed(1)+' лет</b></div>';}).join('');};
+ return '<div class="box"><h3>📊 Распределение возрастов · '+pl.length+' игроков</h3>'+bars(ageB)+'</div>'
+  +'<div class="box"><h3>📊 Распределение овра</h3>'+bars(ovrB)+'</div>'
+  +'<div class="box"><h3>🧒 Самые молодые составы</h3><div class="moves">'+sq(teams.slice(0,6))+'</div></div>'
+  +'<div class="box"><h3>🧓 Самые опытные составы</h3><div class="moves">'+sq(teams.slice(-6).reverse())+'</div></div>';
+}
 // stat leaders: top-3 podiums per category (min-maps filtered)
 function statLeaders(){
  const pool=Object.values(P).filter(p=>p.stats&&p.stats.maps>0);
@@ -413,7 +481,7 @@ function render(){
  const troph=trophyStrip(myWon);
  const logo=(D.logos||{})[my];
  // ---- HLTV-style fixed top bar ----
- document.getElementById('topbar').innerHTML=`<div class="tb-inner">${logo?`<img class="tb-logo" src="${logo}">`:`<div class="tb-logo ini">${my.slice(0,2).toUpperCase()}</div>`}<div class="tb-name">${my}<span>Team Center</span></div><div class="tb-right"><div class="tb-stat">Баланс <b class="cash" id="tbCash">${fmt(D.money.cash)}</b></div><div class="tb-stat">Мир. ранг <b id="tbRank">#${T.rank||'-'}</b></div></div></div>`;
+ document.getElementById('topbar').innerHTML=`<div class="tb-inner">${logo?`<img class="tb-logo" src="${logo}">`:`<div class="tb-logo ini">${my.slice(0,2).toUpperCase()}</div>`}<div class="tb-name">${my}<span>Team Center</span></div><div class="tb-search"><input id="gsearch" placeholder="Поиск игрока или команды…" autocomplete="off"><div id="gsres" class="gsres"></div></div><div class="tb-right"><div class="tb-stat">Баланс <b class="cash" id="tbCash">${fmt(D.money.cash)}</b></div><div class="tb-stat">Мир. ранг <b id="tbRank">#${T.rank||'-'}</b></div></div></div>`;
  // ---- right sidebar widgets ----
  const RK5=(D.ranking||[]).slice(0,5);
  const upcT=(D.calendar||[]).filter(t=>!t.done).slice(0,7);
@@ -548,7 +616,7 @@ function render(){
  const earn=(D.ranking||[]).filter(t=>t.earnings>0).slice().sort((a,b)=>b.earnings-a.earnings).slice(0,30);
  const earnHTML=earn.length?`<div class="box"><h3>💰 Призовые команд за сезон</h3><table><thead><tr><th>#</th><th>Команда</th><th>Заработано</th><th>Мир. ранг</th></tr></thead><tbody>${earn.map((t,i)=>`<tr onclick='openT(${JSON.stringify(t.team)})'><td>${i+1}</td><td><div class="pcell">${tlogo2(t.team)?`<img class="rlogo" style="width:24px;height:24px" src="${tlogo2(t.team)}">`:`<div class="rlogo ini" style="width:24px;height:24px;background:${col(t.team)}">${t.team.slice(0,2).toUpperCase()}</div>`}<span>${t.full||t.team}</span></div></td><td><b style="color:var(--gold)">${fmt(t.earnings)}</b></td><td style="color:var(--mut)">#${t.rank}</td></tr>`).join('')}</tbody></table></div>`:'';
  document.getElementById('s_power').innerHTML=`<div class="box"><h3>💪 Power ranking составов · по среднему овру топ-5</h3><table><thead><tr><th>#</th><th>Команда</th><th>Ср. овр</th><th>Стоимость состава</th><th>Мир. ранг</th></tr></thead><tbody>${byOvr.map((t,i)=>`<tr onclick='openT(${JSON.stringify(t.team)})'><td>${i+1}</td><td><div class="pcell">${tlogo2(t.team)?`<img class="rlogo" style="width:24px;height:24px" src="${tlogo2(t.team)}">`:`<div class="rlogo ini" style="width:24px;height:24px;background:${col(t.team)}">${t.team.slice(0,2).toUpperCase()}</div>`}<span>${t.full||t.team}</span></div></td><td><b>${t.avg_ovr}</b></td><td>${t.sq_value?fmt(t.sq_value):'—'}</td><td style="color:var(--mut)">#${t.rank}</td></tr>`).join('')}</tbody></table></div>${earnHTML}
-  <div class="box"><h3>💎 Самые дорогие игроки мира</h3><table><thead><tr><th>#</th><th>Игрок</th><th>Команда</th><th>Возр.</th><th>Овр</th><th>Стоимость</th></tr></thead><tbody>${TV.map((p,i)=>`<tr onclick='openP(${JSON.stringify(p.nick)})'><td>${i+1}</td><td><div class="pcell">${avn(p.nick)}<span>${flag(p.country,true)} ${p.nick}</span></div></td><td style="cursor:pointer" onclick='event.stopPropagation();openT(${JSON.stringify(p.team||"")})'>${p.team||'—'}</td><td>${p.age||'-'}</td><td>${p.overall||'-'}</td><td><b style="color:var(--gold)">${fmt(p.value)}</b></td></tr>`).join('')||'<tr><td colspan="6" style="color:var(--mut)">—</td></tr>'}</tbody></table></div>${natBreakdown()?`<div class="box"><h3>🗺️ Разбивка по странам · игроки топ-команд</h3>${natBreakdown()}</div>`:''}`;
+  <div class="box"><h3>💎 Самые дорогие игроки мира</h3><table><thead><tr><th>#</th><th>Игрок</th><th>Команда</th><th>Возр.</th><th>Овр</th><th>Стоимость</th></tr></thead><tbody>${TV.map((p,i)=>`<tr onclick='openP(${JSON.stringify(p.nick)})'><td>${i+1}</td><td><div class="pcell">${avn(p.nick)}<span>${flag(p.country,true)} ${p.nick}</span></div></td><td style="cursor:pointer" onclick='event.stopPropagation();openT(${JSON.stringify(p.team||"")})'>${p.team||'—'}</td><td>${p.age||'-'}</td><td>${p.overall||'-'}</td><td><b style="color:var(--gold)">${fmt(p.value)}</b></td></tr>`).join('')||'<tr><td colspan="6" style="color:var(--mut)">—</td></tr>'}</tbody></table></div>${natBreakdown()?`<div class="box"><h3>🗺️ Разбивка по странам · игроки топ-команд</h3>${natBreakdown()}</div>`:''}${leagueAnalytics()}`;
  // FIN
  // FIN — breakdown, salaries, projection, ledger
  const TX=D.txns||[];
@@ -636,8 +704,10 @@ window.openT=function(team){if(!team)return;var t=(D.ranking||[]).find(function(
 // tournament page: final standings, prize money, points, majors
 window.openTour=function(name){var t=(D.tournaments||[]).find(function(x){return x.name===name;});if(!t)return;
  var ic=TICON(name),tl=function(x){return (D.logos||{})[x];};
+ var _prz=(t.table||[]).map(function(r){return r.prize||0;});
+ var _totalP=_prz.reduce(function(a,b){return a+b;},0),_maxP=Math.max.apply(null,_prz.concat([1]));
  var rows=(t.table||[]).map(function(r){var m=r.place===1?'🥇':r.place===2?'🥈':r.place===3?'🥉':'#'+r.place;
-  return "<tr onclick='openT("+JSON.stringify(r.team)+")'><td style=\"text-align:center;font-size:15px\">"+m+"</td><td><div class=\"pcell\">"+(tl(r.team)?'<img class="rlogo" src="'+tl(r.team)+'">':'<div class="rlogo ini" style="background:'+col(r.team)+'">'+r.team.slice(0,2).toUpperCase()+'</div>')+"<span>"+r.team+"</span></div></td><td>"+(r.prize?fmt(r.prize):'—')+"</td><td>"+(r.pts||'—')+"</td></tr>";}).join('');
+  return "<tr onclick='openT("+JSON.stringify(r.team)+")'><td style=\"text-align:center;font-size:15px\">"+m+"</td><td><div class=\"pcell\">"+(tl(r.team)?'<img class="rlogo" src="'+tl(r.team)+'">':'<div class="rlogo ini" style="background:'+col(r.team)+'">'+r.team.slice(0,2).toUpperCase()+'</div>')+"<span>"+r.team+"</span></div></td><td><div class=\"pzcell\"><div class=\"pzbar\"><i style=\"width:"+(r.prize?Math.round(r.prize/_maxP*100):0)+"%\"></i></div><b>"+(r.prize?fmt(r.prize):'—')+"</b></div></td><td>"+(r.pts||'—')+"</td></tr>";}).join('');
  var logoEl=ic?'<img class="mphoto" style="object-fit:contain;background:#20272e;padding:14px" src="'+ic+'">':'<div class="mphoto" style="background:var(--pan2);display:flex;align-items:center;justify-content:center;font-size:52px">🏆</div>';
  var RNAME={1:'Финал',2:'Полуфинал',4:'1/4 финала',8:'1/8 финала',16:'1/16 финала'};
  var brow=function(team,win){
@@ -658,12 +728,13 @@ window.openTour=function(name){var t=(D.tournaments||[]).find(function(x){return
    (t.major?'<div style="margin-top:6px"><span class="mbadge" style="background:var(--gold)">MAJOR</span></div>':'')+
    '<div class="mreal" style="margin-top:6px">Участников: '+((t.table||[]).length)+'</div></div></div>'+
   brk+
-  '<div class="statbox"><div class="sh">Итоговая таблица</div><table><thead><tr><th>Место</th><th>Команда</th><th>Приз</th><th>Очки</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" style="color:var(--mut)">Нет данных</td></tr>')+'</tbody></table></div>';
+  '<div class="statbox"><div class="sh">Итоговая таблица'+(_totalP?' <span>· призовой фонд '+fmt(_totalP)+'</span>':'')+'</div><table><thead><tr><th>Место</th><th>Команда</th><th>Приз</th><th>Очки</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" style="color:var(--mut)">Нет данных</td></tr>')+'</tbody></table></div>';
  document.getElementById('modal').classList.add('on');};
 // make ranked-team players + free agents clickable (basic card even without photo/stats)
 (D.ranking||[]).forEach(function(t){(t.roster||[]).forEach(function(r){if(!P[r.nick])P[r.nick]={nick:r.nick,first:r.first||'',last:r.last||'',country:r.country,team:t.team,overall:r.overall,potential:0,age:r.age,attrs:{},stats:null};});});
 (D.free_agents||[]).forEach(function(r){if(!P[r.nick])P[r.nick]={nick:r.nick,first:r.first||'',last:r.last||'',country:r.country,team:'',overall:r.overall,potential:0,age:r.age,value:r.value||0,role:r.role||'',attrs:{},stats:null};});
 render();
+try{ initSearch(); applySort(); }catch(e){}
 // Live polling — only active when the page is served from the localhost server.
 (function(){
   var set=function(id,v){var e=document.getElementById(id);if(e)e.textContent=v;};
