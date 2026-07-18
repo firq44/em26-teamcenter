@@ -897,16 +897,24 @@ def build_ranking(D, team_won=None):
                                           p.get("first", ""), p.get("last", "")))
         tval[t] = tval.get(t, 0) + p.get("value", 0)
     tmed = D.get("teamMedalsAll", {})
+    tearn = D.get("team_earnings", {})
+    phist = D.get("pointsHist", {})
+    rhist = D.get("rankHist", {})
     out = []
     for nm, rk in D["teamRank"].items():
         full_roster = sorted(rosters.get(nm, []), key=lambda x: x[0], reverse=True)
         rl = full_roster[:6]
         top5 = [x[0] for x in full_roster[:5]]
         avg_ovr = round(sum(top5) / len(top5), 1) if top5 else 0
+        pv = phist.get(nm)
+        cur_pts = int(round(pv[-1])) if pv else 0
+        rv = rhist.get(nm)
+        move = (rv[-2] - rv[-1]) if (rv and len(rv) >= 2) else 0   # +ve = climbed
         out.append({"rank": rk, "team": nm, "full": D["teamFull"].get(nm, nm),
                     "country": D["teamCountry"].get(nm, ""),
                     "medals": tmed.get(nm, [0, 0, 0]),
                     "avg_ovr": avg_ovr, "sq_value": tval.get(nm, 0), "roster_size": len(full_roster),
+                    "earnings": tearn.get(nm, 0), "points": cur_pts, "move": move,
                     "won": [{"n": n, "m": 1 if mj else 0} for n, mj in team_won.get(nm, [])],
                     "roster": [{"nick": x[1], "overall": x[0], "country": x[2], "age": x[3],
                                 "first": x[4], "last": x[5]} for x in rl]})
@@ -969,6 +977,17 @@ def catalog_base(root):
 
 def build_payload(D, photos, team_logo, tlogos):
     my = D["myTeam"]
+    # prize money earned per team (sum of final-placement prize across all tournaments)
+    team_earnings = {}
+    for t in D.get("tournaments", []):
+        for row in t.get("table", []):
+            if row.get("prize"):
+                team_earnings[row["team"]] = team_earnings.get(row["team"], 0) + row["prize"]
+    D["team_earnings"] = team_earnings
+    team_count = {}
+    for p in D["players"].values():
+        if p.get("team"):
+            team_count[p["team"]] = team_count.get(p["team"], 0) + 1
     team_won, tourn_icons, tourn_list = compute_trophies(D)   # sets p["won"]
     awards = compute_tournament_awards(D)                     # tournament MVP/EVP per player
     hist = D.get("ratingHist", {})
@@ -1008,6 +1027,9 @@ def build_payload(D, photos, team_logo, tlogos):
             if aw["mvp"]: o["mvp"] = aw["mvp"]   # tournament MVP count
             if aw["evp"]: o["evp"] = aw["evp"]   # tournament EVP count
         if p.get("stats"): o["stats"] = p["stats"]
+        te = team_earnings.get(p["team"], 0)
+        if te and team_count.get(p["team"]):
+            o["earnings"] = int(te / team_count[p["team"]])   # even split of team prize
         if p.get("medals"): o["medals"] = p["medals"]
         if p.get("won"): o["won"] = [{"n": n, "m": 1 if mj else 0} for n, mj in p["won"]]
         h = hist.get(nk)
