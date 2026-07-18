@@ -251,7 +251,8 @@ function playerOfWeek(){const cand=roster.filter(p=>p.stats&&p.stats.maps>0);if(
 function trfCards(){const TRF=D.transfers||[];const top=TRF.filter(t=>t.fee>0).slice().sort((a,b)=>b.fee-a.fee).slice(0,12);if(!top.length)return '';
  const side=x=>{const l=tlogoOf(x);return l?`<img src="${l}">`:`<div class="tini" style="background:${col(x||'?')}">${(x||'FA').slice(0,2).toUpperCase()}</div>`;};
  return '<div class="trfcards">'+top.map(t=>{const pp=P[t.nick]||{nick:t.nick};const src=photoURL(pp)||SIL;
-  return `<div class="trfcard" onclick='openP(${JSON.stringify(t.nick)})'><div class="th"><img class="tph" src="${src}" onerror="tcSil(this)"><div><div class="tnk">${pp.country?flag(pp.country,true):''} ${t.nick}</div><div class="sub">${t.age?t.age+' лет':'&nbsp;'}</div></div></div><div class="tmove">${side(t.from)}<span class="arr">→</span>${side(t.to)}</div><div class="tfee">${fmt(t.fee)}</div></div>`;}).join('')+'</div>';}
+  const ag=(pp&&pp.age)?pp.age+' лет':'&nbsp;';
+  return `<div class="trfcard" onclick='openP(${JSON.stringify(t.nick)})'><div class="th"><img class="tph" src="${src}" onerror="tcSil(this)"><div><div class="tnk">${pp.country?flag(pp.country,true):''} ${t.nick}</div><div class="sub">${ag}</div></div></div><div class="tmove">${side(t.from)}<span class="arr">→</span>${side(t.to)}</div><div class="tfee">${fmt(t.fee)}</div></div>`;}).join('')+'</div>';}
 // radar/pizza chart of grouped attributes (FM-style)
 const RGRP=[['Аим',[0,2,9]],['Реакция',[1,3]],['Клатч',[4,12]],['Тактика',[5,6,15]],['Энтри',[7,10]],['Саппорт',[8,13]],['Лидерство',[14,16]],['Стабильн.',[11,17,18,19]]];
 function radarSVG(attrs){
