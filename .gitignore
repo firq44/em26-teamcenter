@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.bak
+*.new
+updater.log
+teamcenter_server.log
+files/BepInEx/plugins/TeamCenter/_pending/
+files/BepInEx/plugins/TeamCenter/live.json
