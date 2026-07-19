@@ -173,6 +173,16 @@ def main():
             print("  [x] %s: %s" % (relpath, e))
             failed += 1
 
+    # delete mods that were pulled from the pack (e.g. the buggy match-result mod)
+    for rel in (manifest.get("remove") or []):
+        tgt, _isdb = target_for(game, rel)
+        if os.path.exists(tgt):
+            try:
+                os.remove(tgt)
+                print("  [ok] удалён устаревший мод: %s" % rel)
+            except Exception as e:
+                print("  [x] не удалось удалить %s: %s" % (rel, e))
+
     # make sure live auto-update is on (base URL for the self-updater)
     try:
         tc = os.path.join(game, "BepInEx", "plugins", "TeamCenter")

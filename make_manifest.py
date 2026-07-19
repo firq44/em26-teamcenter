@@ -21,6 +21,10 @@ LEGACY = ["teamcenter_gen.py", "teamcenter_server.py", "template.html",
           "flags.json", "game_logos.json", "updater.py"]
 LEGACY_SRC = {n: "BepInEx/plugins/TeamCenter/" + n for n in LEGACY}
 
+# game-relative paths the updater/installer should DELETE from an existing install
+# (mods removed from the pack). MatchSkipFIX desynced map winner vs round score.
+REMOVE = ["BepInEx/plugins/MatchSkipFIX.dll"]
+
 
 def sha(path):
     h = hashlib.sha256()
@@ -45,7 +49,7 @@ def main():
         if src in files:
             files[name] = files[src]
 
-    manifest = {"files": files, "count": count}
+    manifest = {"files": files, "count": count, "remove": REMOVE}
     out = os.path.join(HERE, "manifest.json")
     with io.open(out, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=1)

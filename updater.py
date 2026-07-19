@@ -147,7 +147,38 @@ def run(here):
     if n_apply or n_pending:
         _log(here, "sync: %d applied, %d pending (apply on game exit)"
              % (n_apply, n_pending))
+
+    # files to actively delete (e.g. a buggy mod removed from the pack)
+    for rel in (manifest.get("remove") or []):
+        tgt = target_path(here, rel)
+        if not tgt or not os.path.exists(tgt):
+            continue
+        try:
+            os.remove(tgt)
+            _log(here, "removed %s" % rel)
+        except (PermissionError, OSError):
+            _queue_remove(here, rel)          # locked -> delete when game closes
+        except Exception as e:
+            _log(here, "remove failed %s: %s" % (rel, e))
     return core_changed
+
+
+def _queue_remove(here, rel):
+    """Record a relpath to delete once the game (which has the DLL locked) exits."""
+    pend = os.path.join(here, "_pending")
+    if not os.path.isdir(pend):
+        os.makedirs(pend, exist_ok=True)
+    q = os.path.join(pend, "_remove.txt")
+    have = set()
+    if os.path.isfile(q):
+        try: have = set(io.open(q, encoding="utf-8").read().split("\n"))
+        except Exception: have = set()
+    if rel not in have:
+        try:
+            with io.open(q, "a", encoding="utf-8") as f:
+                f.write(rel + "\n")
+        except Exception:
+            pass
 
 
 def apply_pending(here):
@@ -157,6 +188,21 @@ def apply_pending(here):
     pend = os.path.join(here, "_pending")
     if not os.path.isdir(pend):
         return 0
+    # process queued deletions first (DLLs now unlocked because the game closed)
+    q = os.path.join(pend, "_remove.txt")
+    if os.path.isfile(q):
+        try:
+            for rel in io.open(q, encoding="utf-8").read().split("\n"):
+                rel = rel.strip()
+                if not rel:
+                    continue
+                tgt = target_path(here, rel)
+                if tgt and os.path.exists(tgt):
+                    try: os.remove(tgt); _log(here, "removed (deferred) %s" % rel)
+                    except Exception as e: _log(here, "deferred remove failed %s: %s" % (rel, e))
+            os.remove(q)
+        except Exception as e:
+            _log(here, "remove-queue err: %s" % e)
     moved = 0
     for root, _dirs, files in os.walk(pend):
         for fn in files:
