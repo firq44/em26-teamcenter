@@ -7,7 +7,7 @@
 /* palette taken 1:1 from hltv.org */
 :root{--bg:#1a2129;--pan:#2d3844;--pan2:#364250;--dark:#232a30;--line:#3b4653;--tx:#dfe4e8;--mut:#929a9e;--acc:#87a3bf;--blue:#5b9dd9;--gold:#f0a83a;--good:#7ebd5a;--bad:#cd5b52}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.5 'Open Sans','Segoe UI',system-ui,sans-serif}
-.wrap{max-width:1180px;margin:0 auto;padding:14px}
+.wrap{max-width:1280px;margin:0 auto;padding:14px}
 .panel{background:var(--pan);border-radius:6px;margin-bottom:10px;overflow:hidden}
 .photos{display:flex;background:#1a1f24;padding:0}
 .photos .pl{flex:1;position:relative;cursor:pointer;border-right:1px solid #0a1119;min-height:150px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
@@ -240,7 +240,7 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 /* ===== HLTV-style shell: fixed top bar, wide layout, sidebar, sticky tabs ===== */
 body{padding-top:46px}
 .topbar{position:fixed;top:0;left:0;right:0;height:46px;background:#12171c;border-bottom:1px solid #0a0e12;z-index:50;box-shadow:0 2px 10px rgba(0,0,0,.35)}
-.tb-inner{max-width:1180px;margin:0 auto;height:100%;display:flex;align-items:center;gap:12px;padding:0 16px}
+.tb-inner{max-width:1280px;margin:0 auto;height:100%;display:flex;align-items:center;gap:12px;padding:0 16px}
 .tb-logo{width:30px;height:30px;object-fit:contain;flex:0 0 auto}
 .tb-logo.ini{border-radius:5px;background:var(--pan2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;color:var(--tx)}
 .tb-name{font-weight:800;font-size:15px;letter-spacing:.3px}
@@ -264,9 +264,15 @@ th.srt-th:hover{color:var(--tx)}
 .pzbar{flex:0 1 80px;height:8px;background:var(--dark);border-radius:3px;overflow:hidden}
 .pzbar i{display:block;height:100%;background:linear-gradient(90deg,#c98a1e,var(--gold))}
 .pzcell b{min-width:64px;text-align:right;font-variant-numeric:tabular-nums}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+.layout{display:grid;grid-template-columns:164px minmax(0,1fr) 288px;gap:14px;align-items:start}
 .main{min-width:0}
 .side{position:sticky;top:58px;display:flex;flex-direction:column;gap:12px}
+/* left vertical navigation — every tab visible at once, no scroll, no wrapping */
+.lnav{position:sticky;top:58px;display:flex;flex-direction:column;gap:2px;background:var(--pan);border-radius:9px;padding:7px}
+.lnav button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;color:var(--mut);padding:9px 11px;font-size:13px;font-weight:600;cursor:pointer;border-radius:7px;white-space:nowrap;transition:background .12s,color .12s}
+.lnav button .ti{font-size:15px;width:19px;text-align:center;flex:0 0 auto}
+.lnav button:hover:not(.on){color:var(--tx);background:rgba(255,255,255,.05)}
+.lnav button.on{background:var(--pan2);color:#fff;box-shadow:inset 3px 0 0 var(--gold)}
 .swid{background:var(--pan);border-radius:6px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.2)}
 .swid h4{margin:0;padding:10px 13px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);background:var(--dark);border-bottom:1px solid var(--line)}
 .srow{display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
@@ -281,7 +287,13 @@ th.srt-th:hover{color:var(--tx)}
 .srow.more{justify-content:flex-end;color:var(--acc);font-size:11px;font-weight:600;border-bottom:none}
 .srow.more:hover{color:var(--blue);background:transparent}
 .tabs{position:sticky;top:46px;z-index:20;box-shadow:0 3px 8px rgba(0,0,0,.28)}
-@media(max-width:900px){.layout{grid-template-columns:1fr}.side{position:static;order:2}}
+@media(max-width:900px){
+ .layout{grid-template-columns:1fr}
+ .lnav{position:static;order:1;flex-direction:row;flex-wrap:wrap}
+ .lnav button{width:auto}
+ .main{order:2}
+ .side{position:static;order:3}
+}
 </style></head><body><div class="topbar" id="topbar"></div><div class="wrap" id="app"></div>
 <div class="modal" id="modal" onclick="if(event.target===this)this.classList.remove('on')"><div class="mbox" id="mbox"></div></div>
 <script>
@@ -562,7 +574,7 @@ function render(){
   <div class="swid"><h4>🌍 Мировой топ-5</h4>${RK5.map(t=>`<div class="srow" onclick='openT(${JSON.stringify(t.team)})'><span class="sr-rk">${t.rank}</span>${slogo(t.team)?`<img src="${slogo(t.team)}">`:`<div class="sr-ini" style="background:${col(t.team)}">${t.team.slice(0,2).toUpperCase()}</div>`}<span class="sr-nm">${t.full||t.team}</span></div>`).join('')}<div class="srow more" onclick="show('rank')">Весь рейтинг →</div></div>
   <div class="swid"><h4>📅 Ближайшие турниры</h4>${upcT.map(t=>`<div class="srow" onclick='openTour(${JSON.stringify(t.name)})'>${TICON(t.name)?`<img src="${TICON(t.name)}">`:'<span class="sr-ic">🏆</span>'}<span class="sr-nm">${t.name}</span></div>`).join('')||'<div class="srow" style="cursor:default;color:var(--mut)">—</div>'}<div class="srow more" onclick="show('cal')">Весь календарь →</div></div>
   ${bigTrf.length?`<div class="swid"><h4>💸 Топ трансферы</h4>${bigTrf.map(t=>{const pp=P[t.nick]||{nick:t.nick};return `<div class="srow" onclick='openP(${JSON.stringify(t.nick)})'>${photoURL(pp)?`<img class="sr-ph" src="${photoURL(pp)}" onerror="tcSil(this)">`:`<div class="sr-ini" style="background:${col(t.nick)}">${t.nick.slice(0,2).toUpperCase()}</div>`}<span class="sr-nm">${t.nick}</span><span class="sr-fee">${fmt(t.fee)}</span></div>`;}).join('')}<div class="srow more" onclick="show('transfers')">Все трансферы →</div></div>`:''}`;
- document.getElementById('app').innerHTML=`<div class="layout"><div class="main">
+ document.getElementById('app').innerHTML=`<div class="layout"><nav class="lnav" id="tabs"></nav><div class="main">
  <div class="panel"><div class="photos">${roster.map(p=>`<div class="pl" onclick='openP(${JSON.stringify(p.nick)})'>${photo(p.nick)?`<img class="ph" src="${photo(p.nick)}">`:`<div class="av" style="background:${col(p.nick)}">${p.nick.slice(0,2).toUpperCase()}</div>`}<div class="nm">${flag(p.country)||'▪'} ${p.nick}</div></div>`).join('')}</div></div>
  <div class="panel">
    <div class="thead">
@@ -578,7 +590,6 @@ function render(){
    <div class="inforow"><span class="k">Бюджет</span><span class="v" id="liveCash">${fmt(D.money.cash)}</span></div>
    <div class="trophies">${troph||'<span style="color:var(--mut)">Пока без трофеев</span>'}</div>
  </div>
- <div class="tabs" id="tabs"></div>
  <div id="views"></div>
  <div class="foot">EM2026 Team Center · авто-определение команды${D.live?' · 🟢 live из памяти игры':(D.saved_at?' · данные на момент сохранения игры: '+D.saved_at:'')}</div>
  </div><aside class="side">${sideHtml}</aside></div>`;
@@ -589,7 +600,6 @@ function render(){
  window.show=id=>{
   [...tb.children].forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
   [...vs.children].forEach(s=>s.classList.toggle('on',s.id==='s_'+id));
-  const act=tb.querySelector('button.on');if(act&&act.scrollIntoView)act.scrollIntoView({inline:'nearest',block:'nearest'});
   if(id==='rank'){const me=document.querySelector('.rrow.me');if(me)me.scrollIntoView({block:'center'});}
  };
  show('info');
