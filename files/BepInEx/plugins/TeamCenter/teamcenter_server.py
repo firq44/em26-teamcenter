@@ -236,6 +236,126 @@ def _final_save():
     except Exception as e:
         log("final save err: %s" % e)
 
+def _patch_ersfund():
+    """Cap every tournament's ERS fund to a realistic (real-VRS) scale so teams settle
+    around ~2000 instead of ballooning to 5k+. IDEMPOTENT: sets an absolute target
+    computed from the tournament's prize + major flag, re-encoded at the SAME msgpack
+    width (safe in-place patch, never grows the file). Runs after the game has closed,
+    so the save is not locked; and because it's part of the shared modpack it keeps new
+    careers realistic too (a friend gets the same fix automatically)."""
+    import struct
+    try:
+        path = os.path.join(G.latest_save(), "SlotData.mpack")
+        data = bytearray(open(path, "rb").read())
+    except Exception as e:
+        log("ERS patch: no save (%s)" % e); return
+    def _tot(prize, mj):
+        if mj: return 2000
+        if prize <= 0: return 30
+        def lp(v, a, b, oa, ob):
+            if v <= a: return oa
+            if v >= b: return ob
+            return oa + (v - a) / (b - a) * (ob - oa)
+        if prize <= 10000:   return lp(prize, 0, 10000, 30, 60)
+        if prize <= 50000:   return lp(prize, 10001, 50000, 80, 160)
+        if prize <= 150000:  return lp(prize, 50001, 150000, 200, 360)
+        if prize <= 500000:  return lp(prize, 150001, 500000, 500, 800)
+        if prize <= 1000000: return lp(prize, 500001, 1000000, 1000, 1400)
+        if prize <= 1250000: return lp(prize, 1000001, 1250000, 1500, 1800)
+        return 1800
+    def target(prize, mj):                       # real-life calibration: current /2.75
+        tiered = max(1, round(_tot(prize, mj) / 3.75))
+        return max(3, int(round(tiered / 2.75)))
+    class _P:                                     # position-tracking msgpack reader
+        def __init__(s, d): s.d = d; s.i = 0
+        def u8(s): v = s.d[s.i]; s.i += 1; return v
+        def rd(s, n): v = s.d[s.i:s.i+n]; s.i += n; return v
+        def pv(s):
+            st = s.i; b = s.u8()
+            if b < 0x80: return (b, st, s.i)
+            if b >= 0xe0: return (b - 256, st, s.i)
+            if b < 0x90:
+                for _ in range(b & 0x0f): s.pv(); s.pv()
+                return (('m',), st, s.i)
+            if b < 0xa0:
+                return ([s.pv() for _ in range(b & 0x0f)], st, s.i)
+            if b < 0xc0: s.rd(b & 0x1f); return (('s',), st, s.i)
+            if b == 0xc0: return (None, st, s.i)
+            if b == 0xc2: return (False, st, s.i)
+            if b == 0xc3: return (True, st, s.i)
+            if b == 0xc4: s.rd(s.u8()); return (('b',), st, s.i)
+            if b == 0xc5: s.rd(struct.unpack('>H', s.rd(2))[0]); return (('b',), st, s.i)
+            if b == 0xc6: s.rd(struct.unpack('>I', s.rd(4))[0]); return (('b',), st, s.i)
+            if b == 0xca: return (struct.unpack('>f', s.rd(4))[0], st, s.i)
+            if b == 0xcb: return (struct.unpack('>d', s.rd(8))[0], st, s.i)
+            if b == 0xcc: return (s.u8(), st, s.i)
+            if b == 0xcd: return (struct.unpack('>H', s.rd(2))[0], st, s.i)
+            if b == 0xce: return (struct.unpack('>I', s.rd(4))[0], st, s.i)
+            if b == 0xcf: return (struct.unpack('>Q', s.rd(8))[0], st, s.i)
+            if b == 0xd0: return (struct.unpack('>b', s.rd(1))[0], st, s.i)
+            if b == 0xd1: return (struct.unpack('>h', s.rd(2))[0], st, s.i)
+            if b == 0xd2: return (struct.unpack('>i', s.rd(4))[0], st, s.i)
+            if b == 0xd3: return (struct.unpack('>q', s.rd(8))[0], st, s.i)
+            if b == 0xd9: s.rd(s.u8()); return (('s',), st, s.i)
+            if b == 0xda: s.rd(struct.unpack('>H', s.rd(2))[0]); return (('s',), st, s.i)
+            if b == 0xdb: s.rd(struct.unpack('>I', s.rd(4))[0]); return (('s',), st, s.i)
+            if b == 0xdc:
+                n = struct.unpack('>H', s.rd(2))[0]; return ([s.pv() for _ in range(n)], st, s.i)
+            if b == 0xdd:
+                n = struct.unpack('>I', s.rd(4))[0]; return ([s.pv() for _ in range(n)], st, s.i)
+            if b == 0xde:
+                n = struct.unpack('>H', s.rd(2))[0]
+                for _ in range(n): s.pv(); s.pv()
+                return (('m',), st, s.i)
+            if b == 0xdf:
+                n = struct.unpack('>I', s.rd(4))[0]
+                for _ in range(n): s.pv(); s.pv()
+                return (('m',), st, s.i)
+            if b in (0xd4, 0xd5, 0xd6, 0xd7, 0xd8):
+                sz = {0xd4:1, 0xd5:2, 0xd6:4, 0xd7:8, 0xd8:16}[b]; s.u8(); s.rd(sz); return (('e',), st, s.i)
+            if b == 0xc7: n = s.u8(); s.u8(); s.rd(n); return (('e',), st, s.i)
+            if b == 0xc8: n = struct.unpack('>H', s.rd(2))[0]; s.u8(); s.rd(n); return (('e',), st, s.i)
+            if b == 0xc9: n = struct.unpack('>I', s.rd(4))[0]; s.u8(); s.rd(n); return (('e',), st, s.i)
+            raise ValueError("mp %02x" % b)
+    def reenc(tb, nv):
+        if tb == 0xca: return b'\xca' + struct.pack('>f', float(nv))
+        if tb == 0xcb: return b'\xcb' + struct.pack('>d', float(nv))
+        if tb == 0xcc and 0 <= nv <= 255: return b'\xcc' + bytes([nv])
+        if tb == 0xcd and 0 <= nv <= 65535: return b'\xcd' + struct.pack('>H', nv)
+        if tb == 0xce: return b'\xce' + struct.pack('>I', nv)
+        if tb < 0x80 and 0 <= nv < 0x80: return bytes([nv])
+        return None
+    try:
+        cat = _P(data).pv()[0][51][0]
+    except Exception as e:
+        log("ERS patch: parse failed (%s)" % e); return
+    changed = 0
+    for tt in cat:
+        fl = tt[0]
+        if not isinstance(fl, list) or len(fl) <= 25: continue
+        f4 = fl[4][0]; f6 = fl[6][0]
+        if not isinstance(f6, (int, float)): f6 = 0
+        val, st, en = fl[25]
+        if not isinstance(val, (int, float)): continue
+        tgt = target(f6, f4 == 2)
+        if int(round(val)) == tgt: continue           # already at target -> idempotent skip
+        nb = reenc(data[st], tgt)
+        if nb is None or len(nb) != (en - st): continue   # width mismatch -> skip safely
+        data[st:en] = nb; changed += 1
+    if not changed:
+        log("ERS patch: funds already realistic (0 changed)"); return
+    try:
+        bak = path + ".bak_ersauto"
+        if not os.path.exists(bak):
+            import shutil; shutil.copy2(path, bak)
+    except Exception:
+        pass
+    try:
+        open(path, "wb").write(bytes(data))
+        log("ERS patch: rescaled %d tournament funds to realistic VRS" % changed)
+    except Exception as e:
+        log("ERS patch: write failed (%s)" % e)
+
 def _game_exit_watcher():
     """Wait for the game to close, then: (1) save the final career state, (2) apply
     any DLL/config updates that were locked while the game ran, and (3) SHUT THE
@@ -247,6 +367,7 @@ def _game_exit_watcher():
         time.sleep(6)
     # --- the game has exited ---
     _final_save()                        # 1) everything we did is safely on disk
+    _patch_ersfund()                     # 1b) keep tournament VRS funds realistic (idempotent)
     try:                                 # 2) apply mod/config updates unlocked by exit
         import updater
         moved = updater.apply_pending(HERE)

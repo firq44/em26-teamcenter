@@ -1235,6 +1235,9 @@ def merge_archive(D):
     for nk in hist20:
         hist20[nk].sort()
     D["top20_history"] = hist20
+    # full year->rank->nick table, so the dashboard can open a whole year's Top-20 grid
+    D["top20_by_year"] = {str(y): (r if isinstance(r, dict) else {str(i + 1): n for i, n in enumerate(r)})
+                          for y, r in t20.items()}
 
     # ---- value + rating history (for the over-time chart) ----
     vh = arch.setdefault("vhist", {})
@@ -1577,6 +1580,7 @@ def build_payload(D, photos, team_logo, tlogos):
         "top_value": top_value,
         "bargains": bargains,
         "tournaments": tourn_list,
+        "top20_by_year": D.get("top20_by_year", {}),
         "calendar": calendar,
         "photos": photos,
         "logos": _merge_logos(my, team_logo, tlogos),
