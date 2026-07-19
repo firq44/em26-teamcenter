@@ -2,7 +2,7 @@
 # EM2026 Team Center generator — invoked by the BepInEx plugin on F3.
 # Reads the current save + game assets, builds an HLTV-style dashboard for
 # the team you are currently managing, and opens it in the browser.
-import os, sys, io, glob, json, struct, base64, traceback, webbrowser, time, pickle
+import os, sys, io, glob, json, struct, base64, traceback, webbrowser, time, pickle, hashlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAME_DIR = os.path.abspath(os.path.join(HERE, "..", "..", ".."))   # TeamCenter->plugins->BepInEx->game
@@ -856,6 +856,118 @@ def compute_trophies(D):
             icons[nm] = ic
     return team_won, icons, tourn_list
 
+# ---------------------------------------------------------------------------
+# Career archive — persistent history that is NEVER deleted.
+# The game clears finished tournaments (and thus derived MVP/EVP/trophies) when a
+# season rolls over. We snapshot every finished tournament — with its standings,
+# the winner's roster and the MVP/EVP attribution captured while it is still
+# available — into career_archive.json in the plugin folder. Every build merges
+# the current finished tournaments in (deduped by a content hash so nothing is
+# ever overwritten or double-counted) and then feeds the FULL accumulated history
+# back into the dashboard, so tournaments, awards and trophies survive forever.
+ARCHIVE = os.path.join(HERE, "career_archive.json")
+
+def load_archive():
+    try:
+        with io.open(ARCHIVE, encoding="utf-8") as f:
+            a = json.load(f)
+        if not isinstance(a, dict):
+            a = {}
+    except Exception:
+        a = {}
+    a.setdefault("tournaments", {})
+    a.setdefault("seq", 0)
+    return a
+
+def save_archive(a):
+    try:
+        tmp = ARCHIVE + ".new"
+        with io.open(tmp, "w", encoding="utf-8") as f:
+            json.dump(a, f, ensure_ascii=False)
+        os.replace(tmp, ARCHIVE)
+    except Exception as e:
+        log("archive save err: %s" % e)
+
+def _tourn_key(t, winner):
+    """Content hash: same event in two different seasons has a different winner /
+    standings -> different key -> both kept. Identical re-reads collapse (no dupes)."""
+    tbl = t.get("table") or []
+    sig = (t.get("name", "") + "|" + (winner or "") + "|" +
+           ";".join("%s:%s" % (r.get("team"), r.get("place")) for r in tbl))
+    return hashlib.sha1(sig.encode("utf-8")).hexdigest()[:16]
+
+def _winner_detail(D, t):
+    st = t.get("standings") or {}
+    winner = next((tm for tm, pl in st.items() if pl == 1), None)
+    def top(team, k):
+        pls = [p for p in D["players"].values() if p.get("team") == team and p.get("nick")]
+        pls.sort(key=lambda p: p.get("overall", 0), reverse=True)
+        return pls[:k]
+    # accurate trophy holders: players who hold this event in their honours AND whose
+    # team actually finished 1st (same rule the game/compute_trophies uses)
+    roster = []
+    g = t.get("guid")
+    if g:
+        roster = [nk for nk, p in D["players"].items()
+                  if g in (p.get("tournGuids") or []) and st.get(p.get("team")) == 1]
+    wp = top(winner, 5) if winner else []
+    if not roster:
+        roster = [p["nick"] for p in wp]   # fallback: the winning team's top-5
+    mvp = wp[0]["nick"] if wp else None
+    evp = [p["nick"] for p in wp[1:3]]
+    runner = next((tm for tm, pl in st.items() if pl == 2), None)
+    if runner:
+        rp = top(runner, 1)
+        if rp:
+            evp.append(rp[0]["nick"])
+    return winner, roster, mvp, evp
+
+def merge_archive(D):
+    """Merge current finished tournaments into the persistent archive, then rebuild
+    D['tournaments'] + archived awards/won from the FULL accumulated history."""
+    arch = load_archive()
+    td = arch["tournaments"]
+    seq = arch.get("seq", 0)
+    try:
+        majors = load_tournament_majors()
+    except Exception:
+        majors = set()
+    for t in D.get("tournaments", []):
+        if not t.get("table"):
+            continue
+        winner, roster, mvp, evp = _winner_detail(D, t)
+        key = _tourn_key(t, winner)
+        if key in td:
+            continue
+        seq += 1
+        td[key] = {"name": t["name"], "guid": t.get("guid", ""), "tier": t.get("tier", 0),
+                   "major": 1 if t["name"] in majors else 0,
+                   "standings": t["standings"], "table": t["table"],
+                   "winner": winner, "roster": roster, "mvp": mvp, "evp": evp, "seq": seq}
+    arch["seq"] = seq
+    save_archive(arch)
+
+    recs = sorted(td.values(), key=lambda r: r.get("seq", 0))
+    D["tournaments"] = [{"name": r["name"], "guid": r.get("guid", ""), "tier": r.get("tier", 0),
+                         "standings": r["standings"], "table": r["table"]} for r in recs]
+    awards, won, team_won = {}, {}, {}
+    for r in recs:
+        if r.get("mvp"):
+            a = awards.setdefault(r["mvp"], {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": []})
+            a["mvp"] += 1; a["mvpEvents"].append(r["name"])
+        for e in (r.get("evp") or []):
+            a = awards.setdefault(e, {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": []})
+            a["evp"] += 1; a["evpEvents"].append(r["name"])
+        if r.get("winner"):
+            team_won.setdefault(r["winner"], []).append((r["name"], r.get("major", 0)))
+        for nk in (r.get("roster") or []):
+            won.setdefault(nk, []).append((r["name"], r.get("major", 0)))
+    D["archived_awards"] = awards
+    D["archived_won"] = won
+    D["archived_team_won"] = team_won
+    log("archive: %d tournaments total" % len(td))
+    return arch
+
 def load_game_logos():
     # crests extracted straight from the game's Unity assets (UnityPy), keyed by team nick.
     # Produced once by extract_logos and cached to game_logos.json in the plugin folder.
@@ -981,6 +1093,11 @@ def catalog_base(root):
 
 def build_payload(D, photos, team_logo, tlogos):
     my = D["myTeam"]
+    # accumulate the full career history first (never deletes past seasons)
+    try:
+        merge_archive(D)
+    except Exception as e:
+        log("merge_archive err: %s" % e)
     # prize money earned per team (sum of final-placement prize across all tournaments)
     team_earnings = {}
     for t in D.get("tournaments", []):
@@ -993,7 +1110,26 @@ def build_payload(D, photos, team_logo, tlogos):
         if p.get("team"):
             team_count[p["team"]] = team_count.get(p["team"], 0) + 1
     team_won, tourn_icons, tourn_list = compute_trophies(D)   # sets p["won"]
-    awards = compute_tournament_awards(D)                     # tournament MVP/EVP per player
+    # override player trophies with the persistent archive so old seasons never vanish
+    for nk, wl in (D.get("archived_won") or {}).items():
+        p = D["players"].get(nk)
+        if not p:
+            continue
+        cur = p.get("won") or []
+        seen = set(n for n, _ in cur)
+        for n, m in wl:
+            if n not in seen:
+                cur.append((n, m)); seen.add(n)
+        p["won"] = cur
+    for tm, wl in (D.get("archived_team_won") or {}).items():
+        cur = team_won.get(tm) or []
+        seen = set(n for n, _ in cur)
+        for n, m in wl:
+            if n not in seen:
+                cur.append((n, m)); seen.add(n)
+        team_won[tm] = cur
+    # MVP/EVP from the full archived history (captured with correct rosters at the time)
+    awards = D.get("archived_awards") or compute_tournament_awards(D)
     hist = D.get("ratingHist", {})
     assign_team_roles(D["roster"])                            # sets p["role"] on roster
     # tournament calendar: enrich the catalog with completed/upcoming + winner
