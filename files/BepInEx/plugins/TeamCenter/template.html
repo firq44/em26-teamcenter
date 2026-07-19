@@ -32,17 +32,13 @@ h1{margin:2px 0 10px;font-size:30px;font-weight:800}
 .inforow .k{color:var(--tx)}.inforow .v{color:var(--mut);display:flex;align-items:center;gap:6px}
 .trophies{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line)}
 .trophy{width:40px;height:46px;background:var(--pan2);border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:18px;position:relative;padding:4px}.trophy img{max-width:100%;max-height:100%;object-fit:contain}.tpl{position:absolute;bottom:-2px;right:-2px;background:#1a1f24;border-radius:3px;font-size:9px;padding:1px 4px;color:var(--mut)}
-.tabs{display:block;background:var(--pan);border-radius:8px;margin-bottom:10px;overflow:visible}
-.nav1{display:flex;gap:4px;padding:7px 7px 0}
-.nav2{display:flex;gap:3px;padding:6px 7px 7px;margin-top:6px;border-top:1px solid var(--line);overflow-x:auto}
-.tabs .nav1 .gbtn{background:none;border:none;color:var(--mut);padding:10px 16px;font-size:13.5px;font-weight:700;cursor:pointer;border-radius:7px;display:flex;align-items:center;gap:7px;white-space:nowrap;transition:background .12s,color .12s}
-.tabs .nav1 .gbtn .gi{font-size:15px;line-height:1}
-.tabs .nav1 .gbtn:hover:not(.on){color:var(--tx);background:rgba(255,255,255,.05)}
-.tabs .nav1 .gbtn.on{background:var(--blue);color:#fff;box-shadow:0 2px 8px rgba(60,120,200,.35)}
-.tabs .nav2 button{background:none;border:none;color:var(--mut);padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;border-radius:7px;display:flex;align-items:center;gap:6px;white-space:nowrap;transition:background .12s,color .12s}
-.tabs .nav2 button .ti{font-size:13px;opacity:.85}
-.tabs .nav2 button:hover:not(.on){color:var(--tx);background:rgba(255,255,255,.05)}
-.tabs .nav2 button.on{background:var(--pan2);color:#fff;box-shadow:inset 0 -2px 0 var(--gold)}
+.tabs{display:flex;gap:3px;background:var(--pan);border-radius:8px;margin-bottom:10px;padding:6px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin}
+.tabs::-webkit-scrollbar{height:6px}
+.tabs::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+.tabs button{background:none;border:none;color:var(--mut);padding:9px 13px;font-size:12.5px;font-weight:600;cursor:pointer;border-radius:7px;display:flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto;transition:background .12s,color .12s}
+.tabs button .ti{font-size:13px;opacity:.85}
+.tabs button:hover:not(.on){color:var(--tx);background:rgba(255,255,255,.05)}
+.tabs button.on{background:var(--pan2);color:#fff;box-shadow:inset 0 -2px 0 var(--blue)}
 sec{display:none}sec.on{display:block}
 .box{background:var(--pan);border-radius:6px;padding:16px;margin-bottom:10px;box-shadow:0 1px 0 rgba(255,255,255,.02)}
 .box h3{margin:0 0 14px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut)}
@@ -57,6 +53,9 @@ tbody tr{cursor:pointer}tbody tr:hover{background:var(--pan2)}
 input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(--line);border-radius:5px;color:var(--tx);padding:8px 11px;margin-bottom:12px}
 .sc{font-weight:800;font-variant-numeric:tabular-nums;min-width:44px;text-align:center}.win{color:var(--good)}.lose{color:var(--bad)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;padding:16px;z-index:60}
+#refreshPill{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--gold);color:#1a1f24;font-weight:800;font-size:13px;padding:11px 20px;border-radius:24px;cursor:pointer;z-index:90;box-shadow:0 6px 20px rgba(0,0,0,.5);animation:rpin .25s ease}
+#refreshPill:hover{filter:brightness(1.08)}
+@keyframes rpin{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
 .modal.on{display:flex}.mbox{background:var(--pan);border:1px solid var(--line);border-radius:10px;max-width:780px;width:100%;max-height:90vh;overflow:auto;padding:22px}
 .close{float:right;cursor:pointer;color:var(--mut);font-size:22px;position:relative;z-index:2}
 .mhero{display:flex;gap:16px;align-items:flex-end;background:linear-gradient(180deg,#232a30,var(--pan));margin:-20px -20px 4px;padding:18px 20px;position:relative;overflow:hidden}
@@ -583,32 +582,17 @@ function render(){
  <div id="views"></div>
  <div class="foot">EM2026 Team Center · авто-определение команды${D.live?' · 🟢 live из памяти игры':(D.saved_at?' · данные на момент сохранения игры: '+D.saved_at:'')}</div>
  </div><aside class="side">${sideHtml}</aside></div>`;
- // grouped two-tier navigation: 3 sections on top, only the active section's tabs below
- const GROUPS=[
-  {key:'team',label:'Моя команда',icon:'🏠',tabs:[['info','Обзор','📋'],['roster','Состав','👥'],['matches','Матчи','🎮'],['ach','Трофеи','🏆'],['fin','Финансы','💰']]},
-  {key:'league',label:'Лига',icon:'🌍',tabs:[['rank','Рейтинг','🏅'],['power','Сила команд','💪'],['tourns','Турниры','🎫'],['cal','Календарь','📅']]},
-  {key:'players',label:'Игроки',icon:'👤',tabs:[['stats','Статистика','📊'],['awards','Награды','⭐'],['talents','Таланты','🌱'],['transfers','Трансферы','🔁']]},
- ];
- const TAB_OF={};GROUPS.forEach((g,gi)=>g.tabs.forEach(t=>TAB_OF[t[0]]=gi));
+ // single-row navigation: every tab in one clean line with an icon (scrolls sideways if narrow)
+ const TABS=[['info','Info','📋'],['roster','Состав','👥'],['matches','Матчи','🎮'],['rank','Рейтинг','🏅'],['tourns','Турниры','🎫'],['cal','Календарь','📅'],['transfers','Трансферы','🔁'],['ach','Трофеи','🏆'],['stats','Стата','📊'],['awards','Награды','⭐'],['talents','Таланты','🌱'],['power','Сила','💪'],['fin','Финансы','💰']];
  const tb=document.getElementById('tabs'),vs=document.getElementById('views');
- tb.innerHTML='<div class="nav1"></div><div class="nav2"></div>';
- const n1=tb.querySelector('.nav1'),n2=tb.querySelector('.nav2');
- // one <sec> per tab (all groups)
- GROUPS.forEach(g=>g.tabs.forEach(([id])=>{const s=document.createElement('sec');s.id='s_'+id;vs.appendChild(s);}));
- GROUPS.forEach((g,gi)=>{const b=document.createElement('button');b.className='gbtn';b.innerHTML='<span class="gi">'+g.icon+'</span>'+g.label;b.onclick=()=>{selGroup(gi);show(GROUPS[gi].tabs[0][0]);};n1.appendChild(b);});
- function selGroup(gi){
-  [...n1.children].forEach((b,i)=>b.classList.toggle('on',i===gi));
-  n2.innerHTML='';
-  GROUPS[gi].tabs.forEach(([id,l,ic])=>{const b=document.createElement('button');b.dataset.tab=id;b.innerHTML=(ic?'<span class="ti">'+ic+'</span>':'')+l;b.onclick=()=>show(id);n2.appendChild(b);});
- }
+ TABS.forEach(([id,l,ic],i)=>{const b=document.createElement('button');b.dataset.tab=id;b.innerHTML=(ic?'<span class="ti">'+ic+'</span>':'')+l;b.onclick=()=>show(id);tb.appendChild(b);const s=document.createElement('sec');s.id='s_'+id;vs.appendChild(s);});
  window.show=id=>{
-  let gi=TAB_OF[id];if(gi==null)gi=0;
-  if(!([...n1.children][gi]||{}).classList||![...n1.children][gi].classList.contains('on'))selGroup(gi);
-  [...n2.children].forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
+  [...tb.children].forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
   [...vs.children].forEach(s=>s.classList.toggle('on',s.id==='s_'+id));
+  const act=tb.querySelector('button.on');if(act&&act.scrollIntoView)act.scrollIntoView({inline:'nearest',block:'nearest'});
   if(id==='rank'){const me=document.querySelector('.rrow.me');if(me)me.scrollIntoView({block:'center'});}
  };
- selGroup(0);show('info');
+ show('info');
  // INFO
  const pw=playerOfWeek(),ms=mapStats(),ft=formTiles(5);
  document.getElementById('s_info').innerHTML=`${pw?`<div class="box"><h3>Игрок патча</h3>${pw}</div>`:''}
@@ -840,12 +824,23 @@ try{ initSearch(); applySort(); }catch(e){}
       if(j.rank!=null){ set('lr1','#'+j.rank); set('lr2','#'+j.rank); set('tbRank','#'+j.rank); }
     }).catch(function(){});
   }, 3000);
-  var baseV=null;
+  // When the game saves, new data is available. Do NOT hard-reload (that wipes an
+  // open player card and your current tab). Instead offer a gentle refresh pill so
+  // reloading happens only when YOU choose to — clicks/modals never get interrupted.
+  var baseV=null, stale=false;
   fetch('/version?t='+Date.now()).then(function(r){return r.json();}).then(function(j){baseV=j.v;}).catch(function(){});
+  function showRefresh(){
+    if(document.getElementById('refreshPill')) return;
+    var p=document.createElement('div');
+    p.id='refreshPill';
+    p.innerHTML='🔄 Данные обновились — обновить';
+    p.onclick=function(){location.reload();};
+    document.body.appendChild(p);
+  }
   setInterval(function(){
     fetch('/version?t='+Date.now()).then(function(r){return r.json();}).then(function(j){
-      if(baseV!=null && j && j.v && j.v!==baseV) location.reload();
+      if(baseV!=null && j && j.v && j.v!==baseV){ stale=true; showRefresh(); }
     }).catch(function(){});
-  }, 2000);
+  }, 4000);
 })();
 </script></body></html>
