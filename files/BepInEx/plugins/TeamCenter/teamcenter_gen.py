@@ -239,6 +239,16 @@ def extract(root):
                     pl["tournGuids"] = gs
     D["tournaments"] = parse_tournaments_raw(root)
     D["catalog"] = catalog_base(root)
+    # REAL tournament MVP: the tournament database (root[51]) stores the actual MVP
+    # nick in slot 18 of each record — this is exactly what the game shows.
+    D["tourn_mvp"] = {}
+    for rec in (A(at(root, 51)) or []):
+        ra = A(rec)
+        if not ra or len(ra) < 19:
+            continue
+        nm = S(at(ra, 0)); mvp = S(at(ra, 18))
+        if nm and mvp:
+            D["tourn_mvp"][nm] = mvp
     D["transfers"] = parse_transfers(root)
     D["roster"] = sorted([p for p in D["players"].values() if p["team"] == my],
                          key=lambda p: p["overall"], reverse=True)
@@ -906,11 +916,9 @@ def save_archive(a):
         log("archive save err: %s" % e)
 
 def _tourn_key(t, winner):
-    """Content hash: same event in two different seasons has a different winner /
-    standings -> different key -> both kept. Identical re-reads collapse (no dupes)."""
-    tbl = t.get("table") or []
-    sig = (t.get("name", "") + "|" + (winner or "") + "|" +
-           ";".join("%s:%s" % (r.get("team"), r.get("place")) for r in tbl))
+    """Key a tournament by its (unique, numbered) name — each event instance appears
+    once, so it can never be counted twice no matter how many times it's captured."""
+    sig = (t.get("name", "") or "")
     return hashlib.sha1(sig.encode("utf-8")).hexdigest()[:16]
 
 def _winner_detail(D, t):
@@ -945,6 +953,20 @@ def merge_archive(D):
     arch = load_archive()
     td = arch["tournaments"]
     seq = arch.get("seq", 0)
+    # one-time cleanup: collapse any duplicate records of the same (name, winner)
+    # left over from the old content-hash keying, so nothing is counted twice.
+    seen = {}
+    for k in list(td.keys()):
+        r = td[k]
+        dk = r.get("name")
+        if dk in seen:
+            # keep the record that actually has a champion (more complete)
+            if not td[seen[dk]].get("winner") and r.get("winner"):
+                del td[seen[dk]]; seen[dk] = k
+            else:
+                del td[k]
+        else:
+            seen[dk] = k
     try:
         majors = load_tournament_majors()
     except Exception:
@@ -1002,13 +1024,15 @@ def merge_archive(D):
     D["tournaments"] = [{"name": r["name"], "guid": r.get("guid", ""), "tier": r.get("tier", 0),
                          "standings": r["standings"], "table": r["table"]} for r in recs]
     awards, won, team_won = {}, {}, {}
+    # MVP awards come straight from the game's tournament database (root[51]) — the
+    # REAL MVP of every finished event, exactly as the game shows it.
+    for tname, mvpnick in (D.get("tourn_mvp") or {}).items():
+        if not mvpnick:
+            continue
+        a = awards.setdefault(mvpnick, {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": []})
+        a["mvp"] += 1; a["mvpEvents"].append(tname)
+    # trophies (players' titles) + team titles from the accumulated standings history
     for r in recs:
-        if r.get("mvp"):
-            a = awards.setdefault(r["mvp"], {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": []})
-            a["mvp"] += 1; a["mvpEvents"].append(r["name"])
-        for e in (r.get("evp") or []):
-            a = awards.setdefault(e, {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": []})
-            a["evp"] += 1; a["evpEvents"].append(r["name"])
         if r.get("winner"):
             team_won.setdefault(r["winner"], []).append((r["name"], r.get("major", 0)))
         for nk in (r.get("roster") or []):
