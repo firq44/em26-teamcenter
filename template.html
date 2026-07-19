@@ -70,6 +70,11 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 #statModeSeg{display:inline-flex;gap:2px;background:var(--dark);border-radius:7px;padding:3px}
 #statModeSeg button{background:none;border:none;color:var(--mut);padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;border-radius:5px;font-family:inherit}
 #statModeSeg button.on{background:var(--gold);color:#1a1f24}
+/* in-section sub-tab chips: show one block at a time, no long scroll */
+.subnav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;position:sticky;top:52px;z-index:15;background:var(--bg);padding:4px 0}
+.subnav .subchip{background:var(--pan);border:1px solid var(--line);color:var(--mut);padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;border-radius:20px;font-family:inherit;white-space:nowrap;transition:all .12s}
+.subnav .subchip:hover{color:var(--tx);border-color:var(--mut)}
+.subnav .subchip.on{background:var(--blue);border-color:var(--blue);color:#fff}
 /* Team of Season + Top-20 + Hall of Fame */
 .tos{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
 .toscard{background:var(--pan2);border-radius:9px;padding:12px 10px;text-align:center;cursor:pointer;box-shadow:inset 0 0 0 1px var(--line);position:relative}
@@ -369,7 +374,7 @@ function stat(p){var s=(window.STATMODE==='career'&&p.career)?p.career:p.stats;r
 window.setStatMode=function(m){
  if(window.STATMODE===m)return; window.STATMODE=m;
  document.querySelectorAll('#statModeSeg button').forEach(function(b){b.classList.toggle('on',b.dataset.m===m);});
- var t=window.__tcTab||'info'; try{render();initSearch();applySort();}catch(e){} show(t);
+ var t=window.__tcTab||'info'; try{render();initSearch();applySort();sectionize();}catch(e){} show(t);
 };
 // per-card stats block with its own Сезон/Карьера switch (shows all-time kd side by side)
 function _kpi(x){return '<div class="kpis4"><div class="c"><span>Рейтинг</span><b style="color:var(--gold)">'+x.rating+'</b></div><div class="c"><span>K/D</span><b>'+x.kd+'</b></div><div class="c"><span>ADR</span><b>'+x.adr+'</b></div><div class="c"><span>KPR</span><b>'+x.kpr+'</b></div></div>';}
@@ -658,8 +663,7 @@ function render(){
   <div class="swid"><h4>🌍 Мировой топ-5</h4>${RK5.map(t=>`<div class="srow" onclick='openT(${JSON.stringify(t.team)})'><span class="sr-rk">${t.rank}</span>${slogo(t.team)?`<img src="${slogo(t.team)}">`:`<div class="sr-ini" style="background:${col(t.team)}">${t.team.slice(0,2).toUpperCase()}</div>`}<span class="sr-nm">${t.full||t.team}</span></div>`).join('')}<div class="srow more" onclick="show('rank')">Весь рейтинг →</div></div>
   <div class="swid"><h4>📅 Ближайшие турниры</h4>${upcT.map(t=>`<div class="srow" onclick='openTour(${JSON.stringify(t.name)})'>${TICON(t.name)?`<img src="${TICON(t.name)}">`:'<span class="sr-ic">🏆</span>'}<span class="sr-nm">${t.name}</span></div>`).join('')||'<div class="srow" style="cursor:default;color:var(--mut)">—</div>'}<div class="srow more" onclick="show('cal')">Весь календарь →</div></div>
   ${bigTrf.length?`<div class="swid"><h4>💸 Топ трансферы</h4>${bigTrf.map(t=>{const pp=P[t.nick]||{nick:t.nick};return `<div class="srow" onclick='openP(${JSON.stringify(t.nick)})'>${photoURL(pp)?`<img class="sr-ph" src="${photoURL(pp)}" onerror="tcSil(this)">`:`<div class="sr-ini" style="background:${col(t.nick)}">${t.nick.slice(0,2).toUpperCase()}</div>`}<span class="sr-nm">${t.nick}</span><span class="sr-fee">${fmt(t.fee)}</span></div>`;}).join('')}<div class="srow more" onclick="show('transfers')">Все трансферы →</div></div>`:''}`;
- document.getElementById('app').innerHTML=`<div class="layout"><nav class="lnav" id="tabs"></nav><div class="main">
- <div class="panel"><div class="photos">${roster.map(p=>`<div class="pl" onclick='openP(${JSON.stringify(p.nick)})'>${photo(p.nick)?`<img class="ph" src="${photo(p.nick)}">`:`<div class="av" style="background:${col(p.nick)}">${p.nick.slice(0,2).toUpperCase()}</div>`}<div class="nm">${flag(p.country)||'▪'} ${p.nick}</div></div>`).join('')}</div></div>
+ const bannerHTML=`<div class="panel"><div class="photos">${roster.map(p=>`<div class="pl" onclick='openP(${JSON.stringify(p.nick)})'>${photo(p.nick)?`<img class="ph" src="${photo(p.nick)}">`:`<div class="av" style="background:${col(p.nick)}">${p.nick.slice(0,2).toUpperCase()}</div>`}<div class="nm">${flag(p.country)||'▪'} ${p.nick}</div></div>`).join('')}</div></div>
  <div class="panel">
    <div class="thead">
      ${logo?`<img class="bg" src="${logo}">`:''}
@@ -673,24 +677,47 @@ function render(){
    <div class="inforow"><span class="k">Тренер</span><span class="v">${D.coach?(D.coach.nick?D.coach.first+" '"+D.coach.nick+"' "+D.coach.last:D.coach.first+' '+D.coach.last):'—'}</span></div>
    <div class="inforow"><span class="k">Бюджет</span><span class="v" id="liveCash">${fmt(D.money.cash)}</span></div>
    <div class="trophies">${troph||'<span style="color:var(--mut)">Пока без трофеев</span>'}</div>
- </div>
+ </div>`;
+ document.getElementById('app').innerHTML=`<div class="layout"><nav class="lnav" id="tabs"></nav><div class="main">
  <div id="views"></div>
  <div class="foot">EM2026 Team Center · авто-определение команды${D.live?' · 🟢 live из памяти игры':(D.saved_at?' · данные на момент сохранения игры: '+D.saved_at:'')}</div>
  </div><aside class="side">${sideHtml}</aside></div>`;
  // single-row navigation: every tab in one clean line with an icon (scrolls sideways if narrow)
- const TABS=[['info','Info','📋'],['roster','Состав','👥'],['matches','Матчи','🎮'],['rank','Рейтинг','🏅'],['tourns','Турниры','🎫'],['cal','Календарь','📅'],['transfers','Трансферы','🔁'],['ach','Трофеи','🏆'],['stats','Стата','📊'],['awards','Награды','⭐'],['talents','Таланты','🌱'],['power','Сила','💪'],['fin','Финансы','💰'],['hof','Зал славы','🏛️']];
+ const TABS=[['info','Info','📋'],['roster','Состав','👥'],['matches','Матчи','🎮'],['rank','Рейтинг','🏅'],['tourns','Турниры','🎫'],['cal','Календарь','📅'],['transfers','Трансферы','🔁'],['ach','Трофеи','🏆'],['stats','Стата','📊'],['awards','Награды','⭐'],['talents','Таланты','🌱'],['power','Сила','💪'],['fin','Финансы','💰']];
  const tb=document.getElementById('tabs'),vs=document.getElementById('views');
  TABS.forEach(([id,l,ic],i)=>{const b=document.createElement('button');b.dataset.tab=id;b.innerHTML=(ic?'<span class="ti">'+ic+'</span>':'')+l;b.onclick=()=>show(id);tb.appendChild(b);const s=document.createElement('sec');s.id='s_'+id;vs.appendChild(s);});
  window.show=id=>{
   window.__tcTab=id;
   [...tb.children].forEach(b=>b.classList.toggle('on',b.dataset.tab===id));
   [...vs.children].forEach(s=>s.classList.toggle('on',s.id==='s_'+id));
+  window.scrollTo(0,0);                       // always start a section at the top
   if(id==='rank'){const me=document.querySelector('.rrow.me');if(me)me.scrollIntoView({block:'center'});}
+ };
+ // Split every multi-box section into sub-tab chips so only one block shows at a
+ // time — no more scrolling past a pile of boxes to reach the one you want.
+ window.sectionize=function(){
+  document.querySelectorAll('#views sec').forEach(function(sec){
+   if(sec.querySelector(':scope > .subnav')) return;
+   var boxes=[].filter.call(sec.children,function(el){return el.classList&&el.classList.contains('box');});
+   if(boxes.length<2) return;
+   var nav=document.createElement('div'); nav.className='subnav';
+   boxes.forEach(function(box,i){
+    var h=box.querySelector('h3'); var label=h?h.textContent.trim():('Раздел '+(i+1));
+    var btn=document.createElement('button'); btn.className='subchip'+(i===0?' on':''); btn.textContent=label;
+    btn.onclick=function(){
+     nav.querySelectorAll('.subchip').forEach(function(b,j){b.classList.toggle('on',j===i);});
+     boxes.forEach(function(b,j){b.style.display=(j===i)?'':'none';});
+     window.scrollTo(0,0);
+    };
+    nav.appendChild(btn); box.style.display=(i===0)?'':'none';
+   });
+   sec.insertBefore(nav,sec.firstChild);
+  });
  };
  show('info');
  // INFO
  const pw=playerOfWeek(),ms=mapStats(),ft=formTiles(5);
- document.getElementById('s_info').innerHTML=`${pw?`<div class="box"><h3>Игрок патча</h3>${pw}</div>`:''}
+ document.getElementById('s_info').innerHTML=`${bannerHTML}${pw?`<div class="box"><h3>Игрок патча</h3>${pw}</div>`:''}
   <div class="box"><h3>Форма команды (${my})</h3>${streakBox()}${ft}${teamForm()||'<span style="color:var(--mut)">Мало сыгранных карт</span>'}</div>
   ${ms?`<div class="box"><h3>Статистика по картам</h3>${ms}</div>`:''}
   <div class="box"><h3>Штаб</h3>${D.staff.map(s=>`<div class="staffrow"><span>${flag(s.country)} ${s.nick?s.first+" '"+s.nick+"' "+s.last:s.first+' '+s.last}</span><span style="color:var(--mut)">${s.role} · ${s.skill}</span></div>`).join('')}</div>`;
@@ -765,7 +792,6 @@ function render(){
  // AWARDS (EM Awards)
  const _aw=emAwards();
  document.getElementById('s_awards').innerHTML=`${(D.team_of_season&&D.team_of_season.length)?`<div class="box"><h3>\u2B50 Команда сезона · топ-5 по рейтингу</h3>${teamOfSeason()}</div>`:''}${(D.top20&&D.top20.length)?`<div class="box"><h3>\uD83C\uDFC5 Топ-20 игроков сезона</h3>${top20Table()}</div>`:''}${mvpRace()?`<div class="box"><h3 class="mvphead"><img class="mvpcoin" src="${MVP_IMG}" style="width:26px;height:26px">Гонка MVP сезона</h3>${mvpRace()}</div>`:''}<div class="box"><h3 class="mvphead"><img class="mvpcoin" src="${MVP_IMG}" style="width:30px;height:30px">Награды сезона</h3>${_aw||'<span style="color:var(--mut)">Мало данных — нужно больше сыгранных карт</span>'}</div>`;
- document.getElementById('s_hof').innerHTML=`<div class="box"><h3 class="mvphead">\uD83C\uDFDB\uFE0F Зал славы · завершившие карьеру</h3>${hofGrid()}</div>`;
  // TALENTS (wonderkids)
  const TAL=D.talents||[];
  document.getElementById('s_talents').innerHTML=`<div class="box"><h3>🌱 Молодые таланты · до 21 года · <span id="talCount">${TAL.length}</span></h3>
@@ -909,7 +935,7 @@ window.openTour=function(name){var t=(D.tournaments||[]).find(function(x){return
 (D.ranking||[]).forEach(function(t){(t.roster||[]).forEach(function(r){if(!P[r.nick])P[r.nick]={nick:r.nick,first:r.first||'',last:r.last||'',country:r.country,team:t.team,overall:r.overall,potential:0,age:r.age,attrs:{},stats:null};});});
 (D.free_agents||[]).forEach(function(r){if(!P[r.nick])P[r.nick]={nick:r.nick,first:r.first||'',last:r.last||'',country:r.country,team:'',overall:r.overall,potential:0,age:r.age,value:r.value||0,role:r.role||'',attrs:{},stats:null};});
 render();
-try{ initSearch(); applySort(); }catch(e){}
+try{ initSearch(); applySort(); sectionize(); }catch(e){}
 // restore where you were after an automatic refresh (tab / scroll / open player card)
 try{var _st=JSON.parse(sessionStorage.getItem('tc_state')||'null');
  if(_st){ if(_st.t)show(_st.t); if(_st.n&&P[_st.n])openP(_st.n); if(typeof _st.y==='number')window.scrollTo(0,_st.y); }
