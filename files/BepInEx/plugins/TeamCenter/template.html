@@ -927,7 +927,9 @@ window.openTour=function(name){var t=(D.tournaments||[]).find(function(x){return
   '<div class="mhero" style="align-items:center">'+logoEl+
   '<div class="mheroinfo" style="flex:1;min-width:0"><div class="mname">'+name+'</div>'+
    (t.major?'<div style="margin-top:6px"><span class="mbadge" style="background:var(--gold)">MAJOR</span></div>':'')+
-   '<div class="mreal" style="margin-top:6px">Участников: '+((t.table||[]).length)+'</div></div></div>'+
+   '<div class="mreal" style="margin-top:6px">Плей-офф · '+((t.table||[]).length)+' команд</div>'+
+   (t.mvp?'<div class="mreal" style="margin-top:4px">MVP: <b class="mvpcoin" style="color:var(--gold);cursor:pointer" onclick=\'event.stopPropagation();openT('+JSON.stringify(t.mvp)+')\'>'+t.mvp+'</b></div>':'')+
+   '</div></div>'+
   brk+
   '<div class="statbox"><div class="sh">Итоговая таблица'+(_totalP?' <span>· призовой фонд '+fmt(_totalP)+'</span>':'')+'</div><table><thead><tr><th>Место</th><th>Команда</th><th>Приз</th><th>Очки</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" style="color:var(--mut)">Нет данных</td></tr>')+'</tbody></table></div>';
  document.getElementById('modal').classList.add('on');};

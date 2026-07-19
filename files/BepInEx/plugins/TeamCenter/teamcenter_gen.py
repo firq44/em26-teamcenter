@@ -645,37 +645,44 @@ def load_flags():
     return {}
 
 def parse_tournaments_raw(root):
-    """root[1] holds every finished tournament: entry[0]=[.,.,guid,NAME,...],
-    entry[1]=[7,[[[team,place,prize,pts],...]]]. Return [{name,guid,standings{team:place}}]."""
+    """Authoritative tournament results straight from the game's tournament
+    catalog at root[51]. Each record (len>=26):
+        [0]  name              [4]  tier (0=T1,1=lower,2=Major)
+        [6]  total prizefund   [9]  country          [10] city
+        [16] PLAYOFF FINAL STANDINGS -> [[team, place, prize, points], ...]
+             (this is the game's real bracket result: place 1 = champion)
+        [18] tournament MVP nick   [22] tier code
+    The old code parsed root[1] — but root[1] is the NEWS feed, not tournament
+    standings, which is why brackets/winners used to contradict the game.
+    We only surface events that have a finished playoff table (a real winner)."""
     out = []
-    t1 = A(at(root, 1)) or []
-    for e in t1:
+    for e in (A(at(root, 51)) or []):
         a = A(e)
-        if not a or len(a) < 2:
+        if not a or len(a) < 24 or not isinstance(a[0], str):
             continue
-        info = A(a[0])
-        if not info or len(info) < 4:
-            continue
-        name = S(at(info, 3)); guid = S(at(info, 2))
-        if not name:
-            continue
+        name = a[0]
+        fin = A(at(a, 16))                 # playoff final standings (authoritative)
+        if not fin:
+            continue                        # not started / league-only -> no bracket result
         standings = {}
-        table = []   # detailed: [{team, place, prize, pts}]
-        res = A(a[1])
-        if res and len(res) > 1:
-            outer = A(res[1])
-            rows = A(outer[0]) if (outer and len(outer) > 0) else None
-            if rows:
-                for row in rows:
-                    r = A(row)
-                    if r and len(r) >= 2 and S(at(r, 0)):
-                        tm = S(at(r, 0)); pl = L(at(r, 1))
-                        standings[tm] = pl
-                        table.append({"team": tm, "place": pl,
-                                      "prize": L(at(r, 2)) if len(r) > 2 else 0,
-                                      "pts": L(at(r, 3)) if len(r) > 3 else 0})
+        table = []
+        for row in fin:
+            r = A(row)
+            if not r or len(r) < 2 or not S(at(r, 0)):
+                continue
+            tm = S(at(r, 0)); pl = L(at(r, 1))
+            standings[tm] = pl
+            table.append({"team": tm, "place": pl,
+                          "prize": L(at(r, 2)) if len(r) > 2 else 0,
+                          "pts": L(at(r, 3)) if len(r) > 3 else 0})
+        if not table:
+            continue
         table.sort(key=lambda x: x["place"])
-        out.append({"name": name, "guid": guid or "", "standings": standings, "table": table})
+        out.append({"name": name, "guid": S(at(a, 22)) or "",
+                    "standings": standings, "table": table,
+                    "mvp": S(at(a, 18)) or "", "tier": L(at(a, 4)),
+                    "prize": L(at(a, 6)),
+                    "city": S(at(a, 10)) or "", "country": S(at(a, 9)) or ""})
     return out
 
 def parse_transfers(root):
@@ -865,7 +872,8 @@ def compute_trophies(D):
             continue
         names.add(t["name"])
         tourn_list.append({"name": t["name"], "major": 1 if t["name"] in majors else 0,
-                           "table": t["table"], "bracket": build_bracket(t["table"])})
+                           "table": t["table"],
+                           "mvp": (D.get("tourn_mvp") or {}).get(t["name"], "")})
     icons = {}
     for nm in names:
         ic = tournament_icon(nm)
@@ -951,6 +959,15 @@ def merge_archive(D):
     """Merge current finished tournaments into the persistent archive, then rebuild
     D['tournaments'] + archived awards/won from the FULL accumulated history."""
     arch = load_archive()
+    # One-time rebuild: the tournament source moved from the buggy root[1] news feed
+    # to the authoritative game catalog (root[51][16]). Old archived standings are
+    # wrong (missing winners, everyone placed 3rd), so wipe the tournament history
+    # once and let it re-archive from the correct source below. Career stat totals
+    # (pstats) and value/rating history (vhist) are kept untouched.
+    if arch.get("src") != "root51":
+        arch["tournaments"] = {}
+        arch["seq"] = 0
+        arch["src"] = "root51"
     td = arch["tournaments"]
     seq = arch.get("seq", 0)
     # one-time cleanup: collapse any duplicate records of the same (name, winner)
