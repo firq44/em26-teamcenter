@@ -167,6 +167,13 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 .swteam span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .swcol.adv .swteam{border-left:3px solid #4ba85a}
 .swcol.elim .swteam{border-left:3px solid #b7413a}
+.mmvp{display:inline-flex;align-items:center;gap:4px;background:linear-gradient(180deg,#f4d24b,#c79a1e);color:#4a3600;font-weight:800;font-size:12px;padding:4px 10px;border-radius:5px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+.tctoast{position:fixed;right:18px;bottom:18px;z-index:120;background:linear-gradient(180deg,#2a323b,#1c2229);color:#fff;font-size:13.5px;font-weight:600;padding:12px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.55),inset 0 0 0 1px var(--gold);max-width:340px;opacity:0;transform:translateY(14px);transition:opacity .35s,transform .35s}
+.tctoast.on{opacity:1;transform:translateY(0)}
+.tctoast b{color:var(--gold)}
+.t20wrap{display:flex;flex-wrap:wrap;gap:8px;padding:4px 2px}
+.t20b{flex:0 0 auto;line-height:0}
+.t20b svg{display:block}
 .rtag{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
 .fbar{display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 10px}
 .fpill{min-width:34px;text-align:center;font-size:11px;font-weight:700;color:#fff;padding:4px 7px;border-radius:5px;cursor:pointer}
@@ -353,6 +360,36 @@ function mvpBadge(p,sz){if(!p||!p.mvp)return '';sz=sz||20;
  return '<span class="mvpb"><img class="mvpcoin" src="'+MVP_IMG+'" style="width:'+sz+'px;height:'+sz+'px">×'+p.mvp+_tip(p.mvpEvents,'MVP турниров')+'</span>';}
 function evpBadge(p){if(!p||!p.evp)return '';
  return '<span class="mvpb evp">EVP ×'+p.evp+_tip(p.evpEvents,'EVP турниров')+'</span>';}
+// Major MVP — MVP of an actual Valve Major (gold pill, HLTV-style)
+function majorMvpBadge(p){if(!p||!p.majorMvp)return '';
+ return '<span class="mmvp" title="'+esc((p.majorMvpEvents||[]).join(' • '))+'">🏆 Major MVP'+(p.majorMvp>1?' ×'+p.majorMvp:'')+'</span>';}
+// HLTV-style Top-20-of-the-year badges. Colour by placement: gold #1, silver #2,
+// bronze #3, copper #4-20. p.top20hist = [[year,rank],...].
+function t20col(r){return r===1?['#ffe27a','#d9a520','#e8b93a','#5a4200']:r===2?['#eef2f6','#aab3be','#c3ccd6','#333a42']:r===3?['#eab06a','#a4642a','#c07d3c','#3e2510']:['#e0975a','#a05a28','#bf7238','#3a2210'];}
+function t20badge(year,rank){var c=t20col(rank),id=year+'x'+rank;
+ return '<div class="t20b" title="#'+rank+' в мире · '+year+'">'
+ +'<svg viewBox="0 0 200 210" width="84" height="88">'
+ +'<defs>'
+ +'<linearGradient id="dg'+id+'" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="'+c[0]+'"/><stop offset="0.55" stop-color="'+c[2]+'"/><stop offset="1" stop-color="'+c[1]+'"/></linearGradient>'
+ +'<linearGradient id="bg'+id+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+c[2]+'"/><stop offset="1" stop-color="'+c[1]+'"/></linearGradient>'
+ +'<filter id="sf'+id+'" x="-30%" y="-25%" width="160%" height="155%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#000" flood-opacity="0.5"/></filter>'
+ +'</defs>'
+ +'<g filter="url(#sf'+id+')">'
+ +'<rect x="56" y="66" width="88" height="88" rx="4" fill="url(#bg'+id+')" stroke="#241a0c" stroke-width="2"/>'
+ +'<g transform="rotate(45 100 110)">'
+ +'<rect x="55" y="65" width="90" height="90" rx="8" fill="url(#dg'+id+')" stroke="#241a0c" stroke-width="4"/>'
+ +'<rect x="60" y="70" width="80" height="80" rx="6" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>'
+ +'<rect x="69" y="79" width="62" height="62" rx="4" fill="none" stroke="#2f6fd0" stroke-width="5" stroke-dasharray="1 6.5" stroke-linecap="round"/>'
+ +'</g>'
+ +'<rect x="58" y="32" width="84" height="28" rx="3" fill="url(#bg'+id+')" stroke="#241a0c" stroke-width="2"/>'
+ +'<text x="100" y="52" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="800" fill="#20160a">'+year+'</text>'
+ +'<text x="100" y="128" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="48" font-weight="900" fill="'+c[3]+'">'+rank+'</text>'
+ +'</g></svg></div>';}
+function top20Strip(p){var h=(p&&p.top20hist)||[];if(!h.length)return '';
+ var ones=h.filter(function(x){return x[1]===1;}).length;
+ var badges=h.slice().sort(function(a,b){return a[1]-b[1]||a[0]-b[0];}).map(function(x){return t20badge(x[0],x[1]);}).join('');
+ var head='Топ-20 мира'+(ones?' <span style="color:var(--gold)">· №1 мира ×'+ones+'</span>':'');
+ return '<div class="statbox"><div class="sh">'+head+'</div><div class="t20wrap">'+badges+'</div></div>';}
 // compact coin for table cells (native title = tournament list, no clipping)
 function mvpCell(p){if(!p||!p.mvp)return '0';var t=(p.mvpEvents||[]).join(' • ');
  return '<span class="mvpb" title="'+esc(t)+'"><img class="mvpcoin" src="'+MVP_IMG+'" style="width:15px;height:15px">'+p.mvp+'</span>';}
@@ -877,7 +914,8 @@ window.openP=nick=>{const p=P[nick];if(!p)return;window.__tcNick=nick;const s=p.
   </table>
  </div></div>
  ${trophies}
- ${(p.mvp||p.evp)?`<div class="statbox"><div class="sh">Награды турниров</div><div class="mbadges" style="justify-content:flex-start;align-items:center;gap:14px">${mvpBadge(p,26)}${evpBadge(p)}</div></div>`:''}
+ ${(p.mvp||p.evp||p.majorMvp)?`<div class="statbox"><div class="sh">Награды турниров</div><div class="mbadges" style="justify-content:flex-start;align-items:center;gap:14px">${majorMvpBadge(p)}${mvpBadge(p,26)}${evpBadge(p)}</div></div>`:''}
+ ${top20Strip(p)}
  ${statsBlock(p)}
  ${(p.hist&&p.hist.length>1)?`<div class="statbox"><div class="sh">Развитие формы <span>· рейтинг по последним ${p.hist.length} матчам</span></div>${devSVG(p.hist)}</div>`:''}
  ${(p.vhist&&p.vhist.length>1)?`<div class="statbox"><div class="sh">Динамика стоимости и рейтинга <span>· за карьеру</span></div>${vhistChart(p.vhist)}</div>`:''}
@@ -1005,5 +1043,30 @@ try{var _st=JSON.parse(sessionStorage.getItem('tc_state')||'null');
     if(Date.now()-lastAct < 4000) return;   // you just interacted -> wait a moment
     tcSave(); location.reload();
   }, 1200);
+  // Live world Top-20 + Major-MVP — the moment EMTV announces a placement, the medal
+  // pops in on the dashboard WITHOUT a page reload (updates in-memory + a toast).
+  function toast(msg){var t=document.createElement('div');t.className='tctoast';t.innerHTML=msg;
+    document.body.appendChild(t);requestAnimationFrame(function(){t.classList.add('on');});
+    setTimeout(function(){t.classList.remove('on');setTimeout(function(){t.remove();},400);},6500);}
+  function sameH(a,b){a=a||[];b=b||[];if(a.length!==b.length)return false;
+    for(var i=0;i<a.length;i++){if(a[i][0]!==b[i][0]||a[i][1]!==b[i][1])return false;}return true;}
+  setInterval(function(){
+    fetch('/top20?t='+Date.now()).then(function(r){return r.json();}).then(function(j){
+      if(!j)return;var t20=j.t20||{},mm=j.mmvp||{};
+      Object.keys(t20).forEach(function(nk){var p=P[nk];if(!p)return;
+        if(!sameH(p.top20hist,t20[nk])){
+          var old=(p.top20hist||[]).map(function(x){return x[0]+'-'+x[1];});
+          t20[nk].forEach(function(x){if(old.indexOf(x[0]+'-'+x[1])<0){toast('🏅 <b>'+nk+'</b> — №'+x[1]+' в Топ-20 мира '+x[0]+'!');}});
+          p.top20hist=t20[nk];
+          if(modalOpen()&&window.__tcNick===nk){openP(nk);}
+        }});
+      Object.keys(mm).forEach(function(nk){var p=P[nk];if(!p)return;
+        if((p.majorMvp||0)!==(mm[nk].n||0)){
+          if((mm[nk].n||0)>(p.majorMvp||0)){toast('🏆 <b>'+nk+'</b> — MVP мажора!');}
+          p.majorMvp=mm[nk].n;p.majorMvpEvents=mm[nk].e;
+          if(modalOpen()&&window.__tcNick===nk){openP(nk);}
+        }});
+    }).catch(function(){});
+  }, 5000);
 })();
 </script></body></html>

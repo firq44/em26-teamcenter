@@ -2,7 +2,7 @@
 # EM2026 Team Center generator — invoked by the BepInEx plugin on F3.
 # Reads the current save + game assets, builds an HLTV-style dashboard for
 # the team you are currently managing, and opens it in the browser.
-import os, sys, io, glob, json, struct, base64, traceback, webbrowser, time, pickle, hashlib
+import os, sys, io, glob, json, struct, base64, traceback, webbrowser, time, pickle, hashlib, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GAME_DIR = os.path.abspath(os.path.join(HERE, "..", "..", ".."))   # TeamCenter->plugins->BepInEx->game
@@ -127,6 +127,51 @@ def age_from_ext(bd, gy=2026):
             return gy - by
     return None
 
+def _year_of_ext(ext):
+    if isinstance(ext, tuple) and len(ext) == 3 and ext[0] == 'ext' and len(ext[2]) >= 4:
+        pl = ext[2]
+        secs = (pl[0] << 24) | (pl[1] << 16) | (pl[2] << 8) | pl[3]
+        return 1970 + secs // 31557600
+    return None
+
+def game_year(root):
+    """Current in-game year (the game's calendar). Falls back to 2026."""
+    for path in ((22, 0), (43, 1)):
+        try:
+            y = _year_of_ext(at(A(at(root, path[0])), path[1]))
+            if y and 2000 <= y <= 2100:
+                return y
+        except Exception:
+            pass
+    return 2026
+
+_T20_TAG = re.compile(r"<[^>]+>")
+_T20_RX = re.compile(r"[Тт]оп[\-\s]?20\s+игроков\s+(\d{4}).*?[№#]\s*(\d+)\s*[—\-–]\s*(\S+)")
+def parse_game_top20(root):
+    """The game's OWN year-end Top-20, read straight from the EMTV news emails in
+    root[1]. Each email subject is 'Топ-20 игроков <b>YEAR</b> года: <b>№RANK</b> — <b>NICK</b>'.
+    This is the authoritative ranking the game shows (e.g. s1mple #16), NOT a
+    dashboard re-computation. Returns {year(int): {rank(int): nick}}."""
+    out = {}
+    for e in (A(at(root, 1)) or []):
+        ea = A(e)
+        if not ea or len(ea) < 4:
+            continue
+        subj = S(at(ea, 3)) or ""
+        if "оп-20 игроков" not in subj and "оп 20 игроков" not in subj:
+            continue
+        clean = _T20_TAG.sub("", subj).strip()
+        m = _T20_RX.search(clean)
+        if not m:
+            continue
+        try:
+            yr = int(m.group(1)); rk = int(m.group(2)); nk = m.group(3).strip()
+        except Exception:
+            continue
+        if nk and 1 <= rk <= 40:
+            out.setdefault(yr, {})[rk] = nk
+    return out
+
 def clean_nick(n):
     if not n: return ""
     if len(n) > 18: return ""
@@ -140,6 +185,8 @@ def extract(root):
          "cash": 0, "txns": [], "avgAge": None, "scoreboards": [], "pointsHist": {}, "rankHist": {}}
     org = A(at(root, 22)); D["myTeam"] = S(at(org, 1)) or ""
     my = D["myTeam"]
+    D["gameYear"] = game_year(root)
+    D["game_top20"] = parse_game_top20(root)      # the game's own Top-20 (from EMTV news)
     # Honours are stored in root[27] (per team) / root[26] (per player). Index [1] is a
     # dict {placement -> count}, placement is 1-indexed: 1 = champion, 2 = runner-up,
     # 3 = 3rd. Key 0 = took part without a podium result (what the user called "just
@@ -1149,8 +1196,12 @@ def merge_archive(D):
     for tname, mvpnick in (D.get("tourn_mvp") or {}).items():
         if not mvpnick:
             continue
-        a = awards.setdefault(mvpnick, {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": []})
+        a = awards.setdefault(mvpnick, {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": [],
+                                        "majorMvp": 0, "majorMvpEvents": []})
+        a.setdefault("majorMvp", 0); a.setdefault("majorMvpEvents", [])
         a["mvp"] += 1; a["mvpEvents"].append(tname)
+        if "major" in tname.lower():          # MVP of an actual Valve Major
+            a["majorMvp"] += 1; a["majorMvpEvents"].append(tname)
     # trophies (players' titles) + team titles from the accumulated standings history
     for r in recs:
         if r.get("winner"):
@@ -1160,6 +1211,30 @@ def merge_archive(D):
     D["archived_awards"] = awards
     D["archived_won"] = won
     D["archived_team_won"] = team_won
+
+    # ---- world Top-20 of the year — the GAME'S OWN ranking from EMTV news ----
+    # Read straight from the game's year-end Top-20 emails (not a dashboard re-rank),
+    # archived per year so it survives even if the player deletes the emails. Builds
+    # each player's placement history ("#16 in 2026, #1 in 2027, ...") forever.
+    t20 = arch.setdefault("top20_by_year", {})     # {year -> {rank(str) -> nick}}
+    for yr, ranks in (D.get("game_top20") or {}).items():
+        cur = t20.get(str(yr))
+        cur = cur if isinstance(cur, dict) else {}  # drop any old rating-based list format
+        for rk, nk in ranks.items():
+            if nk:
+                cur[str(rk)] = nk                  # game data wins; fills/updates the year
+        if cur:
+            t20[str(yr)] = cur
+    hist20 = {}
+    for y, ranks in t20.items():
+        for rk, nk in (ranks.items() if isinstance(ranks, dict) else enumerate(ranks, 1)):
+            try:
+                hist20.setdefault(nk, []).append([int(y), int(rk)])
+            except Exception:
+                pass
+    for nk in hist20:
+        hist20[nk].sort()
+    D["top20_history"] = hist20
 
     # ---- value + rating history (for the over-time chart) ----
     vh = arch.setdefault("vhist", {})
@@ -1400,6 +1475,10 @@ def build_payload(D, photos, team_logo, tlogos):
             if aw["evp"]: o["evp"] = aw["evp"]   # tournament EVP count
             if aw.get("mvpEvents"): o["mvpEvents"] = aw["mvpEvents"]   # which events
             if aw.get("evpEvents"): o["evpEvents"] = aw["evpEvents"]
+            if aw.get("majorMvp"): o["majorMvp"] = aw["majorMvp"]      # MVP-of-a-Major count
+            if aw.get("majorMvpEvents"): o["majorMvpEvents"] = aw["majorMvpEvents"]
+        th = (D.get("top20_history") or {}).get(nk)
+        if th: o["top20hist"] = th               # [[year, rank], ...] world Top-20 finishes
         if p.get("stats"):
             o["stats"] = {k2: v2 for k2, v2 in p["stats"].items() if k2 != "raw"}   # drop bulky raw
         if p.get("career"): o["career"] = p["career"]                                # all-time totals

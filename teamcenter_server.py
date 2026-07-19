@@ -103,6 +103,12 @@ def build():
         if lv.get("balance"): payload["money"]["cash"] = lv["balance"]
         if lv.get("rank"):    payload["team"]["rank"] = lv["rank"]
         payload["live"] = True
+    # cache the world Top-20 + Major-MVP awards so the page can pick up NEW EMTV
+    # announcements live (poll /top20) and pop the medal in without a full reload
+    pl = payload.get("players") or {}
+    _cache["top20"] = {nk: o["top20hist"] for nk, o in pl.items() if o.get("top20hist")}
+    _cache["mmvp"] = {nk: {"n": o["majorMvp"], "e": o.get("majorMvpEvents", [])}
+                      for nk, o in pl.items() if o.get("majorMvp")}
     tpl = io.open(os.path.join(HERE, "template.html"), encoding="utf-8").read()
     html = tpl.replace("__DATA__", json.dumps(payload, ensure_ascii=False)).replace("__TEAM__", D["myTeam"])
     log("built dashboard: team=%s photos=%d" % (D["myTeam"], len(photos)))
@@ -164,6 +170,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(200, json.dumps(v).encode("utf-8"), "application/json"); return
             if self.path.startswith("/version"):
                 self._send(200, json.dumps({"v": cur_save_mtime()}).encode("utf-8"), "application/json"); return
+            if self.path.startswith("/top20"):
+                get_page()   # rebuild only if the save changed (cheap otherwise) -> fresh EMTV
+                self._send(200, json.dumps({"t20": _cache.get("top20", {}),
+                                            "mmvp": _cache.get("mmvp", {})}).encode("utf-8"),
+                           "application/json"); return
             if self.path.startswith("/rebuild"):
                 get_page(force=True)
                 self._send(200, b'{"ok":true}', "application/json"); return
