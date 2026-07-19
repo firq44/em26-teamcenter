@@ -1243,12 +1243,6 @@ def build_ranking(D, team_won=None):
     tearn = D.get("team_earnings", {})
     phist = D.get("pointsHist", {})
     rhist = D.get("rankHist", {})
-    # The game lets the #1 team's cumulative ERS run away to 5000+, which looks
-    # nothing like the real Valve ranking (real #1 sits ~2000). Normalise the whole
-    # board so the top team lands near 2000 and everyone keeps their relative gaps.
-    _allpts = [phist[nm][-1] for nm in D["teamRank"] if phist.get(nm)]
-    _mx = max(_allpts) if _allpts else 0
-    _scale = (2000.0 / _mx) if _mx > 2050 else 1.0
     out = []
     for nm, rk in D["teamRank"].items():
         full_roster = sorted(rosters.get(nm, []), key=lambda x: x[0], reverse=True)
@@ -1256,7 +1250,7 @@ def build_ranking(D, team_won=None):
         top5 = [x[0] for x in full_roster[:5]]
         avg_ovr = round(sum(top5) / len(top5), 1) if top5 else 0
         pv = phist.get(nm)
-        cur_pts = int(round(pv[-1] * _scale)) if pv else 0
+        cur_pts = int(round(pv[-1])) if pv else 0    # the game's own ranking points (raw)
         rv = rhist.get(nm)
         move = (rv[-2] - rv[-1]) if (rv and len(rv) >= 2) else 0   # +ve = climbed
         out.append({"rank": rk, "team": nm, "full": D["teamFull"].get(nm, nm),
