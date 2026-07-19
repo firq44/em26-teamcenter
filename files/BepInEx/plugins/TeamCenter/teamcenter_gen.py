@@ -654,7 +654,9 @@ def parse_tournaments_raw(root):
         [18] tournament MVP nick   [22] tier code
     The old code parsed root[1] — but root[1] is the NEWS feed, not tournament
     standings, which is why brackets/winners used to contradict the game.
-    We only surface events that have a finished playoff table (a real winner)."""
+    We only surface events that have a finished playoff table (a real winner).
+    Field [15] holds the real STAGES: a Swiss/group block and a playoff block,
+    both with actual match pairings — parsed into t['swiss'] and t['bracket']."""
     out = []
     for e in (A(at(root, 51)) or []):
         a = A(e)
@@ -678,11 +680,108 @@ def parse_tournaments_raw(root):
         if not table:
             continue
         table.sort(key=lambda x: x["place"])
+        champ = table[0]["team"]
+        swiss, bracket = _parse_stages(at(a, 15), champ)
         out.append({"name": name, "guid": S(at(a, 22)) or "",
                     "standings": standings, "table": table,
+                    "swiss": swiss, "bracket": bracket,
                     "mvp": S(at(a, 18)) or "", "tier": L(at(a, 4)),
                     "prize": L(at(a, 6)),
                     "city": S(at(a, 10)) or "", "country": S(at(a, 9)) or ""})
+    return out
+
+def _stage_rounds(inner):
+    """The per-round pairings dict lives as the 3rd item of a stage's inner list:
+    inner = [teamCount, [rows], {roundKey: [[.,.,.,.,[[a,b,guid],...], ext]]}].
+    Return an ordered list of rounds, each a list of (teamA, teamB) tuples."""
+    rd_map = None
+    for x in inner:
+        if isinstance(x, dict):
+            rd_map = x; break
+    if not rd_map:
+        return []
+    rounds = []
+    for k in sorted(rd_map.keys(), key=lambda z: int(z) if str(z).lstrip("-").isdigit() else 0):
+        rv = A(rd_map[k])
+        cell = A(rv[0]) if rv else None      # [n,n,n,n,[pairings], ext]
+        if not cell:
+            continue
+        pairings = None
+        for it in cell:                       # find the list-of-pairs element
+            ia = A(it)
+            if isinstance(ia, (list, tuple)) and ia and isinstance(A(ia[0]), (list, tuple)):
+                first = A(ia[0])
+                if len(first) >= 2 and isinstance(first[0], str) and isinstance(first[1], str):
+                    pairings = ia; break
+        if pairings is None:
+            continue
+        matches = []
+        for pr in pairings:
+            pa = A(pr)
+            if pa and len(pa) >= 2 and isinstance(pa[0], str) and isinstance(pa[1], str):
+                matches.append((pa[0], pa[1]))
+        if matches:
+            rounds.append(matches)
+    return rounds
+
+def _parse_stages(f15, champion):
+    """Parse the real Swiss standings and the real playoff bracket from field [15].
+    Returns (swiss, bracket):
+      swiss   = [{team, w, l, adv, elim, pts}]  (group/Swiss stage, real records)
+      bracket = [ [ {a,b,wa,wb}, ... ], ... ]   (playoff rounds, first -> final,
+                 winners derived from who advances / the champion)."""
+    stages = A(f15)
+    if not stages:
+        return [], []
+    swiss, bracket = [], []
+    for st in stages:
+        sa = A(st)
+        if not sa or len(sa) < 2:
+            continue
+        stage_id = L(at(sa, 0))
+        inner = A(at(sa, 1))
+        if not inner or len(inner) < 2:
+            continue
+        rows = A(at(inner, 1)) or []
+        # a stage whose teams carry a played/W/L record and no single-elim shape
+        # is the Swiss/group stage; the other is the playoff.
+        parsed_rows = []
+        for r in rows:
+            ra = A(r)
+            if not ra or not isinstance(ra[0], str):
+                continue
+            parsed_rows.append({"team": ra[0], "played": L(at(ra, 1)),
+                                "w": L(at(ra, 2)), "l": L(at(ra, 3)),
+                                "pts": L(at(ra, 5)),
+                                "elim": bool(L(at(ra, 6))), "adv": bool(L(at(ra, 7)))})
+        rounds = _stage_rounds(inner)
+        if stage_id == 0:
+            # Swiss / group stage: keep the standings (sorted advanced-first)
+            parsed_rows.sort(key=lambda x: (0 if x["adv"] else (2 if x["elim"] else 1),
+                                            -x["w"], x["l"], -x["pts"]))
+            swiss = parsed_rows
+        else:
+            # playoff: build the bracket from the real round pairings
+            bracket = _bracket_from_rounds(rounds, champion)
+    return swiss, bracket
+
+def _bracket_from_rounds(rounds, champion):
+    """rounds = ordered [ [(a,b), ...], ... ] first->final. A team that appears in
+    the next round won its match; the final's winner is the champion."""
+    out = []
+    for i, matches in enumerate(rounds):
+        nxt = set()
+        if i + 1 < len(rounds):
+            for a, b in rounds[i + 1]:
+                nxt.add(a); nxt.add(b)
+        ms = []
+        for a, b in matches:
+            if i + 1 < len(rounds):
+                wa, wb = (a in nxt), (b in nxt)
+            else:
+                wa, wb = (a == champion), (b == champion)
+            ms.append({"a": a, "b": b, "wa": wa, "wb": wb})
+        out.append(ms)
     return out
 
 def parse_transfers(root):
@@ -873,6 +972,7 @@ def compute_trophies(D):
         names.add(t["name"])
         tourn_list.append({"name": t["name"], "major": 1 if t["name"] in majors else 0,
                            "table": t["table"],
+                           "swiss": t.get("swiss") or [], "bracket": t.get("bracket") or [],
                            "mvp": (D.get("tourn_mvp") or {}).get(t["name"], "")})
     icons = {}
     for nm in names:
@@ -964,10 +1064,10 @@ def merge_archive(D):
     # wrong (missing winners, everyone placed 3rd), so wipe the tournament history
     # once and let it re-archive from the correct source below. Career stat totals
     # (pstats) and value/rating history (vhist) are kept untouched.
-    if arch.get("src") != "root51":
+    if arch.get("src") != "root51_v2":
         arch["tournaments"] = {}
         arch["seq"] = 0
-        arch["src"] = "root51"
+        arch["src"] = "root51_v2"
     td = arch["tournaments"]
     seq = arch.get("seq", 0)
     # one-time cleanup: collapse any duplicate records of the same (name, winner)
@@ -999,6 +1099,7 @@ def merge_archive(D):
         td[key] = {"name": t["name"], "guid": t.get("guid", ""), "tier": t.get("tier", 0),
                    "major": 1 if t["name"] in majors else 0,
                    "standings": t["standings"], "table": t["table"],
+                   "swiss": t.get("swiss") or [], "bracket": t.get("bracket") or [],
                    "winner": winner, "roster": roster, "mvp": mvp, "evp": evp, "seq": seq}
     arch["seq"] = seq
 
@@ -1039,7 +1140,9 @@ def merge_archive(D):
 
     recs = sorted(td.values(), key=lambda r: r.get("seq", 0))
     D["tournaments"] = [{"name": r["name"], "guid": r.get("guid", ""), "tier": r.get("tier", 0),
-                         "standings": r["standings"], "table": r["table"]} for r in recs]
+                         "standings": r["standings"], "table": r["table"],
+                         "swiss": r.get("swiss") or [], "bracket": r.get("bracket") or []}
+                        for r in recs]
     awards, won, team_won = {}, {}, {}
     # MVP awards come straight from the game's tournament database (root[51]) — the
     # REAL MVP of every finished event, exactly as the game shows it.

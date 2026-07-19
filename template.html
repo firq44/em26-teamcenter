@@ -155,6 +155,18 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 .brkr.win{border-left-color:#4ba85a;color:#fff;font-weight:600}
 .brkr.los{border-left-color:#b7413a}
 .brkr .bini{width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;flex:0 0 auto}
+.swgrid{display:flex;gap:12px;overflow-x:auto;padding:4px 2px 6px}
+.swcol{display:flex;flex-direction:column;min-width:150px;gap:6px}
+.swh{font-size:11px;font-weight:800;text-align:center;padding:4px 6px;border-radius:5px;background:var(--pan2);color:var(--mut);letter-spacing:.4px;box-shadow:inset 0 0 0 1px var(--line)}
+.swh.adv{background:rgba(75,168,90,.16);color:#5cc26c;box-shadow:inset 0 0 0 1px rgba(75,168,90,.45)}
+.swh.elim{background:rgba(183,65,58,.14);color:#d9736c;box-shadow:inset 0 0 0 1px rgba(183,65,58,.4)}
+.swteam{display:flex;align-items:center;gap:7px;padding:5px 8px;background:var(--pan2);border-radius:5px;font-size:12px;color:var(--txt);cursor:pointer;box-shadow:inset 0 0 0 1px var(--line)}
+.swteam:hover{background:var(--pan)}
+.swteam img{width:18px;height:18px;object-fit:contain;flex:0 0 auto}
+.swteam .bini{width:18px;height:18px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;flex:0 0 auto}
+.swteam span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.swcol.adv .swteam{border-left:3px solid #4ba85a}
+.swcol.elim .swteam{border-left:3px solid #b7413a}
 .rtag{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle;letter-spacing:.3px}
 .fbar{display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 10px}
 .fpill{min-width:34px;text-align:center;font-size:11px;font-weight:700;color:#fff;padding:4px 7px;border-radius:5px;cursor:pointer}
@@ -921,7 +933,20 @@ window.openTour=function(name){var t=(D.tournaments||[]).find(function(x){return
      var hdr=RNAME[rd.length]||('Раунд · '+rd.length);
      var ms=rd.map(function(m){return '<div class="brkm">'+brow(m.a,m.wa)+brow(m.b,m.wb)+'</div>';}).join('');
      return '<div class="brkcol"><div class="brkh">'+hdr+'</div>'+ms+'</div>';}).join('');
-   brk='<div class="statbox"><div class="sh">Сетка плей-офф <span>· реконструкция по финальным местам</span></div><div class="brk">'+cols+'</div></div>';
+   brk='<div class="statbox"><div class="sh">Сетка плей-офф</div><div class="brk">'+cols+'</div></div>';
+ }
+ // Swiss / group stage — real records, grouped by W-L (advanced green, out red)
+ var sw='';
+ if(t.swiss&&t.swiss.length){
+   var grp={},ordr=[];
+   t.swiss.forEach(function(r){var rec=r.w+'–'+r.l;if(!grp[rec]){grp[rec]=[];ordr.push(rec);}grp[rec].push(r);});
+   var scols=ordr.map(function(rec){
+     var rs=grp[rec],adv=rs[0].adv,elim=rs[0].elim;
+     var hc=adv?'adv':(elim?'elim':''),mark=adv?' ✓':(elim?' ✕':'');
+     var body=rs.map(function(r){var lg=tl(r.team),im=lg?'<img src="'+lg+'">':'<div class="bini" style="background:'+col(r.team)+'">'+r.team.slice(0,2).toUpperCase()+'</div>';
+       return '<div class="swteam" onclick=\'event.stopPropagation();openT('+JSON.stringify(r.team)+')\'>'+im+'<span>'+r.team+'</span></div>';}).join('');
+     return '<div class="swcol '+hc+'"><div class="swh '+hc+'">'+rec+mark+'</div>'+body+'</div>';}).join('');
+   sw='<div class="statbox"><div class="sh">Швейцарская стадия <span>· '+t.swiss.length+' команд</span></div><div class="swgrid">'+scols+'</div></div>';
  }
  document.getElementById('mbox').innerHTML='<span class="close" onclick="document.getElementById(\'modal\').classList.remove(\'on\')">×</span>'+
   '<div class="mhero" style="align-items:center">'+logoEl+
@@ -930,7 +955,7 @@ window.openTour=function(name){var t=(D.tournaments||[]).find(function(x){return
    '<div class="mreal" style="margin-top:6px">Плей-офф · '+((t.table||[]).length)+' команд</div>'+
    (t.mvp?'<div class="mreal" style="margin-top:4px">MVP: <b class="mvpcoin" style="color:var(--gold);cursor:pointer" onclick=\'event.stopPropagation();openT('+JSON.stringify(t.mvp)+')\'>'+t.mvp+'</b></div>':'')+
    '</div></div>'+
-  brk+
+  brk+sw+
   '<div class="statbox"><div class="sh">Итоговая таблица'+(_totalP?' <span>· призовой фонд '+fmt(_totalP)+'</span>':'')+'</div><table><thead><tr><th>Место</th><th>Команда</th><th>Приз</th><th>Очки</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" style="color:var(--mut)">Нет данных</td></tr>')+'</tbody></table></div>';
  document.getElementById('modal').classList.add('on');};
 // make ranked-team players + free agents clickable (basic card even without photo/stats)
