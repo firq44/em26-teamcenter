@@ -211,6 +211,8 @@ def extract(root):
         # in the data even when their real skill is far lower — don't trust it.
         if (not pl["team"]) and pl["overall"] == 100:
             pl["overall"] = pl["potential"] if pl["potential"] and pl["potential"] < 100 else 0
+        if len(p) > 43 and L(at(p, 43)) == 1:      # career-retired flag (slot 43)
+            pl["retired"] = 1
         a14 = A(at(p,14))
         if a14 and len(a14) > 0:
             ad = M(a14[0])
@@ -1014,7 +1016,39 @@ def merge_archive(D):
     D["archived_awards"] = awards
     D["archived_won"] = won
     D["archived_team_won"] = team_won
-    log("archive: %d tournaments total" % len(td))
+
+    # ---- value + rating history (for the over-time chart) ----
+    vh = arch.setdefault("vhist", {})
+    vs = arch.get("vseq", 0) + 1
+    arch["vseq"] = vs
+    for nk, p in D["players"].items():
+        val = p.get("value", 0)
+        st = p.get("stats") or {}
+        rat = st.get("rating", 0) or 0
+        if not val and not rat:
+            continue
+        h = vh.setdefault(nk, [])
+        if (not h) or h[-1][1] != val or abs((h[-1][2] or 0) - rat) > 0.02:
+            h.append([vs, val, rat])
+            if len(h) > 80:
+                del h[:len(h) - 80]
+
+    # ---- Hall of Fame: snapshot every retired player's final card, kept forever ----
+    hof = arch.setdefault("hof", {})
+    for nk, p in D["players"].items():
+        if not p.get("retired"):
+            continue
+        aw = awards.get(nk) or {}
+        hof[nk] = {"nick": nk, "first": p.get("first", ""), "last": p.get("last", ""),
+                   "country": p.get("country", ""), "age": p.get("age"),
+                   "overall": p.get("overall", 0), "potential": p.get("potential", 0),
+                   "role": role_single(p) if p.get("attrs") else "",
+                   "career": p.get("career"), "mvp": aw.get("mvp", 0), "evp": aw.get("evp", 0),
+                   "won": won.get(nk, []), "attrs": p.get("attrs", {})}
+    save_archive(arch)
+    D["hof"] = hof
+    D["vhist"] = vh
+    log("archive: %d tournaments, %d in HoF" % (len(td), len(hof)))
     return arch
 
 def load_game_logos():
@@ -1220,6 +1254,9 @@ def build_payload(D, photos, team_logo, tlogos):
         if p.get("stats"):
             o["stats"] = {k2: v2 for k2, v2 in p["stats"].items() if k2 != "raw"}   # drop bulky raw
         if p.get("career"): o["career"] = p["career"]                                # all-time totals
+        if p.get("retired"): o["retired"] = 1
+        vhh = (D.get("vhist") or {}).get(nk)
+        if vhh and len(vhh) > 1: o["vhist"] = vhh                                     # value/rating over time
         te = team_earnings.get(p["team"], 0)
         if te and team_count.get(p["team"]):
             o["earnings"] = int(te / team_count[p["team"]])   # even split of team prize
@@ -1260,8 +1297,35 @@ def build_payload(D, photos, team_logo, tlogos):
                   "country": p.get("country", ""), "team": p.get("team", ""), "age": p.get("age"),
                   "overall": p.get("overall", 0), "value": p.get("value", 0)}
                  for p in tv if p.get("value", 0) > 0][:30]
+    # --- Top-20 players + Team of Season (best by rating this season) ---
+    elig = [p for p in D["players"].values() if p.get("stats") and p["stats"].get("maps", 0) > 0]
+    top20 = []
+    if elig:
+        mx = max(p["stats"]["maps"] for p in elig)
+        mn = max(5, int(mx * 0.4))
+        pool = [p for p in elig if p["stats"]["maps"] >= mn] or elig
+        pool = sorted(pool, key=lambda p: p["stats"]["rating"], reverse=True)[:20]
+        aw = D.get("archived_awards", {})
+        for i, p in enumerate(pool):
+            c = p.get("career") or {}
+            top20.append({"rank": i + 1, "nick": p["nick"], "first": p.get("first", ""),
+                          "last": p.get("last", ""), "country": p.get("country", ""),
+                          "team": p.get("team", ""), "overall": p.get("overall", 0),
+                          "role": role_single(p), "maps": p["stats"]["maps"], "kd": p["stats"]["kd"],
+                          "adr": p["stats"]["adr"], "rating": p["stats"]["rating"],
+                          "cRating": c.get("rating"), "cMaps": c.get("maps"),
+                          "mvp": (aw.get(p["nick"], {}) or {}).get("mvp", 0)})
+    team_of_season = top20[:5]
+    # --- Hall of Fame (retired players, preserved forever) ---
+    hof_list = list((D.get("hof") or {}).values())
+    hof_list.sort(key=lambda h: (len(h.get("won") or []), h.get("mvp", 0),
+                                 (h.get("career") or {}).get("maps", 0), h.get("overall", 0)), reverse=True)
+    hof_list = hof_list[:80]
     return {
         "my_team": my,
+        "top20": top20,
+        "team_of_season": team_of_season,
+        "hof": hof_list,
         "team": {"full": D["teamFull"].get(my, my), "country": D["teamCountry"].get(my, ""),
                  "rank": D["teamRank"].get(my, 0),
                  "won": [{"n": n, "m": 1 if mj else 0} for n, mj in team_won.get(my, [])]},

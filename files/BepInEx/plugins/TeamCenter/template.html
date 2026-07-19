@@ -70,6 +70,29 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 #statModeSeg{display:inline-flex;gap:2px;background:var(--dark);border-radius:7px;padding:3px}
 #statModeSeg button{background:none;border:none;color:var(--mut);padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;border-radius:5px;font-family:inherit}
 #statModeSeg button.on{background:var(--gold);color:#1a1f24}
+/* Team of Season + Top-20 + Hall of Fame */
+.tos{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.toscard{background:var(--pan2);border-radius:9px;padding:12px 10px;text-align:center;cursor:pointer;box-shadow:inset 0 0 0 1px var(--line);position:relative}
+.toscard:hover{background:#3a4653}
+.toscard .rk{position:absolute;top:6px;left:8px;font-size:11px;font-weight:800;color:var(--gold)}
+.toscard img.ph{width:74px;height:86px;border-radius:6px;object-fit:cover;object-position:top;background:#dde2e7}
+.toscard .nk{font-weight:800;margin-top:8px;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toscard .rt{color:var(--gold);font-weight:800;font-size:17px;margin-top:2px}
+.toscard .rl{color:var(--mut);font-size:10px;margin-top:2px}
+@media(max-width:760px){.tos{grid-template-columns:repeat(2,1fr)}}
+.hofgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px}
+.hofcard{background:linear-gradient(160deg,#2a2015,#20272e);border-radius:10px;padding:14px;text-align:center;cursor:pointer;box-shadow:inset 0 0 0 1px #4a3d28}
+.hofcard:hover{box-shadow:inset 0 0 0 1px var(--gold)}
+.hofcard .av{width:68px;height:80px;border-radius:8px;margin:0 auto;overflow:hidden;background:#20272e}
+.hofcard .av img{width:100%;height:100%;object-fit:cover;object-position:top}
+.hofcard .hn{font-weight:800;margin-top:8px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hofcard .hs{color:var(--gold);font-size:11px;margin-top:3px;font-weight:700}
+.hofbadge{display:inline-block;background:linear-gradient(90deg,#b8912f,#e8c368);color:#1a1f24;font-weight:800;font-size:10px;padding:3px 9px;border-radius:11px;letter-spacing:.5px}
+.hofhero{display:flex;gap:18px;align-items:center;background:linear-gradient(135deg,#33270f,#1a1f24 72%);border-radius:12px;padding:20px;border:1px solid #5a4826}
+.hofhero .hbig{width:118px;height:138px;border-radius:10px;object-fit:cover;object-position:top;background:#20272e;flex:0 0 auto}
+.hofstat{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
+.hofstat .c{background:var(--pan2);border-radius:7px;padding:10px;text-align:center}
+.hofstat .c b{display:block;font-size:20px;color:var(--gold)}.hofstat .c span{font-size:11px;color:var(--mut)}
 .kpis4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
 .kpis4 .c{background:var(--pan2);border-radius:6px;padding:10px}.kpis4 .c span{color:var(--mut);font-size:11px}.kpis4 .c b{display:block;font-size:19px}
 .attgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px 18px}
@@ -431,6 +454,44 @@ function streakBox(){var sb=(D.scoreboards||[]);if(!sb.length)return '';
  var word=last?(cnt===1?'победа':'побед подряд'):(cnt===1?'поражение':'поражений подряд');
  var tiles=res.slice(-12).map(function(w){return '<span class="wl '+(w?'w':'l')+'">'+(w?'W':'L')+'</span>';}).join('');
  return '<div class="streak"><span class="stbig '+(last?'w':'l')+'">'+(last?'🔥':'❄️')+' '+cnt+' '+word+'</span><div class="wlrow">'+tiles+'</div></div>';}
+// Team of Season — 5 best-rated players (HLTV Team of the Year style)
+function teamOfSeason(){var t=D.team_of_season||[];if(!t.length)return '';
+ return '<div class="tos">'+t.map(function(p){var pp=P[p.nick]||{nick:p.nick,first:p.first,last:p.last,country:p.country};var src=photoURL(pp)||SIL;
+  return '<div class="toscard" onclick=\'openP('+JSON.stringify(p.nick)+')\'><div class="rk">#'+p.rank+'</div><img class="ph" src="'+src+'" onerror="tcSil(this)"><div class="nk">'+(flag(p.country,true)||'')+' '+p.nick+'</div><div class="rt">'+p.rating+'</div><div class="rl">'+(roleTag(p.role)||p.role||'')+' · '+p.maps+' карт</div></div>';}).join('')+'</div>';}
+// Top-20 players ranked by rating
+function top20Table(){var t=D.top20||[];if(!t.length)return '';
+ return '<table><thead><tr><th>#</th><th>Игрок</th><th>Команда</th><th>Роль</th><th>Карт</th><th>K/D</th><th>ADR</th><th title="MVP турниров">MVP</th><th>Рейтинг</th></tr></thead><tbody>'+t.map(function(p){
+  return '<tr onclick=\'openP('+JSON.stringify(p.nick)+')\'><td><b'+(p.rank<=3?' style="color:var(--gold)"':'')+'>'+p.rank+'</b></td><td><div class="pcell">'+avn(p.nick)+'<span>'+(flag(p.country,true)||'')+' '+p.nick+'</span></div></td><td style="cursor:pointer" onclick=\'event.stopPropagation();openT('+JSON.stringify(p.team||'')+')\'>'+(p.team||'—')+'</td><td>'+(roleTag(p.role)||'')+'</td><td>'+p.maps+'</td><td>'+p.kd+'</td><td>'+p.adr+'</td><td>'+(p.mvp?('<b style="color:var(--gold)">'+p.mvp+'</b>'):'0')+'</td><td><b style="color:var(--gold)">'+p.rating+'</b></td></tr>';}).join('')+'</tbody></table>';}
+// Hall of Fame grid — retired players, kept forever
+function hofGrid(){var hs=D.hof||[];if(!hs.length)return '<span style="color:var(--mut)">Пока никто не завершил карьеру — здесь будут легенды, и они останутся тут навсегда.</span>';
+ return '<div class="hofgrid">'+hs.map(function(p){var pp=P[p.nick]||{nick:p.nick,first:p.first,last:p.last,country:p.country};var src=photoURL(pp)||SIL;var titles=(p.won||[]).length;
+  return '<div class="hofcard" onclick=\'openHOF('+JSON.stringify(p.nick)+')\'><div class="av"><img src="'+src+'" onerror="tcSil(this)"></div><div class="hn">'+(flag(p.country,true)||'')+' '+p.nick+'</div><div class="hs">'+(titles?('🏆 '+titles+(p.mvp?' · MVP '+p.mvp:'')):(p.mvp?('MVP '+p.mvp):('овр '+(p.overall||'-'))))+'</div><div style="margin-top:6px"><span class="hofbadge">ЗАЛ СЛАВЫ</span></div></div>';}).join('')+'</div>';}
+// special Hall-of-Fame profile (distinct design from the normal player card)
+window.openHOF=function(nick){var h=(D.hof||[]).filter(function(x){return x.nick===nick;})[0];if(!h){openP(nick);return;}
+ window.__tcNick=nick;var pp=P[nick]||{nick:nick,first:h.first,last:h.last,country:h.country};var src=photoURL(pp)||SIL;
+ var c=h.career||{};var trophies=trophyStrip((h.won||[]).map(function(w){return {n:w[0],m:w[1]};}));
+ var body='<span class="close" onclick="document.getElementById(\'modal\').classList.remove(\'on\')">×</span>'
+  +'<div class="hofhero"><img class="hbig" src="'+src+'" onerror="tcSil(this)"><div style="flex:1;min-width:0">'
+  +'<div><span class="hofbadge">🏛 ЗАЛ СЛАВЫ</span></div>'
+  +'<div class="mname" style="margin-top:8px">'+nick+'</div>'
+  +'<div class="mreal">'+(flag(h.country)||'')+' '+([h.first,h.last].filter(Boolean).join(' ')||'')+(h.age?(' · '+h.age+' лет'):'')+'</div>'
+  +'<div style="margin-top:8px"><span class="mbadge" style="background:#586070;color:#fff">Карьера завершена</span> '+(h.role?roleTag(h.role):'')+'</div>'
+  +'</div></div>';
+ if(c&&c.maps){body+='<div class="statbox"><div class="sh">Итоги карьеры <span>· '+c.maps+' карт</span></div><div class="hofstat"><div class="c"><b>'+c.rating+'</b><span>Рейтинг</span></div><div class="c"><b>'+c.kd+'</b><span>K/D</span></div><div class="c"><b>'+c.adr+'</b><span>ADR</span></div><div class="c"><b>'+(h.mvp||0)+'</b><span>MVP</span></div></div></div>';}
+ else{body+='<div class="statbox"><div class="sh">Достижения</div><div class="hofstat"><div class="c"><b>'+(h.mvp||0)+'</b><span>MVP</span></div><div class="c"><b>'+(h.evp||0)+'</b><span>EVP</span></div><div class="c"><b>'+((h.won||[]).length)+'</b><span>Трофеи</span></div><div class="c"><b>'+(h.overall||'-')+'</b><span>Овр</span></div></div></div>';}
+ if(trophies)body+='<div class="statbox"><div class="sh">Трофеи</div>'+trophies+'</div>';
+ if(h.attrs&&Object.keys(h.attrs).length)body+='<div class="statbox"><div class="sh">Навыки</div>'+radarSVG(h.attrs)+'</div>';
+ document.getElementById('mbox').innerHTML=body;document.getElementById('modal').classList.add('on');};
+// value + rating over time (two-line chart) for a player's modal
+function vhistChart(vh){if(!vh||vh.length<2)return '';
+ var W=760,H=150,pad=26;var vals=vh.map(function(x){return x[1];}),rats=vh.map(function(x){return x[2];});
+ var vmax=Math.max.apply(null,vals)||1,rmin=Math.min.apply(null,rats),rmax=Math.max.apply(null,rats)||1;
+ var xs=function(i){return pad+i*(W-2*pad)/(vh.length-1);};
+ var yv=function(v){return H-pad-(v/vmax)*(H-2*pad);};
+ var yr=function(r){var sp=(rmax-rmin)||1;return H-pad-((r-rmin)/sp)*(H-2*pad);};
+ var vpath=vh.map(function(x,i){return (i?'L':'M')+xs(i).toFixed(0)+' '+yv(x[1]).toFixed(0);}).join(' ');
+ var rpath=vh.map(function(x,i){return (i?'L':'M')+xs(i).toFixed(0)+' '+yr(x[2]).toFixed(0);}).join(' ');
+ return '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto"><path d="'+vpath+'" fill="none" stroke="#4ba85a" stroke-width="2.5"/><path d="'+rpath+'" fill="none" stroke="var(--gold)" stroke-width="2.5"/></svg><div style="font-size:11px;color:var(--mut)"><span style="color:#4ba85a">━</span> стоимость · <span style="color:var(--gold)">━</span> рейтинг</div>';}
 // player of the patch: best roster player by rating (with a minimum sample of maps)
 function playerOfWeek(){const cand=roster.filter(p=>p.stats&&p.stats.maps>0);if(!cand.length)return '';
  const maxM=cand.reduce((m,p)=>Math.max(m,p.stats.maps),0);const minM=Math.max(3,Math.round(maxM*0.5));
@@ -617,7 +678,7 @@ function render(){
  <div class="foot">EM2026 Team Center · авто-определение команды${D.live?' · 🟢 live из памяти игры':(D.saved_at?' · данные на момент сохранения игры: '+D.saved_at:'')}</div>
  </div><aside class="side">${sideHtml}</aside></div>`;
  // single-row navigation: every tab in one clean line with an icon (scrolls sideways if narrow)
- const TABS=[['info','Info','📋'],['roster','Состав','👥'],['matches','Матчи','🎮'],['rank','Рейтинг','🏅'],['tourns','Турниры','🎫'],['cal','Календарь','📅'],['transfers','Трансферы','🔁'],['ach','Трофеи','🏆'],['stats','Стата','📊'],['awards','Награды','⭐'],['talents','Таланты','🌱'],['power','Сила','💪'],['fin','Финансы','💰']];
+ const TABS=[['info','Info','📋'],['roster','Состав','👥'],['matches','Матчи','🎮'],['rank','Рейтинг','🏅'],['tourns','Турниры','🎫'],['cal','Календарь','📅'],['transfers','Трансферы','🔁'],['ach','Трофеи','🏆'],['stats','Стата','📊'],['awards','Награды','⭐'],['talents','Таланты','🌱'],['power','Сила','💪'],['fin','Финансы','💰'],['hof','Зал славы','🏛️']];
  const tb=document.getElementById('tabs'),vs=document.getElementById('views');
  TABS.forEach(([id,l,ic],i)=>{const b=document.createElement('button');b.dataset.tab=id;b.innerHTML=(ic?'<span class="ti">'+ic+'</span>':'')+l;b.onclick=()=>show(id);tb.appendChild(b);const s=document.createElement('sec');s.id='s_'+id;vs.appendChild(s);});
  window.show=id=>{
@@ -703,7 +764,8 @@ function render(){
  document.getElementById('ss').oninput=e=>{const q=e.target.value.toLowerCase();cur=list.filter(p=>p.nick.toLowerCase().includes(q)||(p.team||'').toLowerCase().includes(q));draw();};
  // AWARDS (EM Awards)
  const _aw=emAwards();
- document.getElementById('s_awards').innerHTML=`${mvpRace()?`<div class="box"><h3 class="mvphead"><img class="mvpcoin" src="${MVP_IMG}" style="width:26px;height:26px">Гонка MVP сезона</h3>${mvpRace()}</div>`:''}<div class="box"><h3 class="mvphead"><img class="mvpcoin" src="${MVP_IMG}" style="width:30px;height:30px">Награды сезона</h3>${_aw||'<span style="color:var(--mut)">Мало данных — нужно больше сыгранных карт</span>'}</div>`;
+ document.getElementById('s_awards').innerHTML=`${(D.team_of_season&&D.team_of_season.length)?`<div class="box"><h3>\u2B50 Команда сезона · топ-5 по рейтингу</h3>${teamOfSeason()}</div>`:''}${(D.top20&&D.top20.length)?`<div class="box"><h3>\uD83C\uDFC5 Топ-20 игроков сезона</h3>${top20Table()}</div>`:''}${mvpRace()?`<div class="box"><h3 class="mvphead"><img class="mvpcoin" src="${MVP_IMG}" style="width:26px;height:26px">Гонка MVP сезона</h3>${mvpRace()}</div>`:''}<div class="box"><h3 class="mvphead"><img class="mvpcoin" src="${MVP_IMG}" style="width:30px;height:30px">Награды сезона</h3>${_aw||'<span style="color:var(--mut)">Мало данных — нужно больше сыгранных карт</span>'}</div>`;
+ document.getElementById('s_hof').innerHTML=`<div class="box"><h3 class="mvphead">\uD83C\uDFDB\uFE0F Зал славы · завершившие карьеру</h3>${hofGrid()}</div>`;
  // TALENTS (wonderkids)
  const TAL=D.talents||[];
  document.getElementById('s_talents').innerHTML=`<div class="box"><h3>🌱 Молодые таланты · до 21 года · <span id="talCount">${TAL.length}</span></h3>
@@ -780,6 +842,7 @@ window.openP=nick=>{const p=P[nick];if(!p)return;window.__tcNick=nick;const s=p.
  ${(p.mvp||p.evp)?`<div class="statbox"><div class="sh">Награды турниров</div><div class="mbadges" style="justify-content:flex-start;align-items:center;gap:14px">${mvpBadge(p,26)}${evpBadge(p)}</div></div>`:''}
  ${statsBlock(p)}
  ${(p.hist&&p.hist.length>1)?`<div class="statbox"><div class="sh">Развитие формы <span>· рейтинг по последним ${p.hist.length} матчам</span></div>${devSVG(p.hist)}</div>`:''}
+ ${(p.vhist&&p.vhist.length>1)?`<div class="statbox"><div class="sh">Динамика стоимости и рейтинга <span>· за карьеру</span></div>${vhistChart(p.vhist)}</div>`:''}
  ${att.length?`<div class="statbox"><div class="sh">Навыки</div>${radarSVG(p.attrs)}</div>`:''}`;
  document.getElementById('modal').classList.add('on');};
 // team profile modal (works for any team in the world ranking, incl. opponents)
