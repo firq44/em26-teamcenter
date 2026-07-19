@@ -1243,6 +1243,12 @@ def build_ranking(D, team_won=None):
     tearn = D.get("team_earnings", {})
     phist = D.get("pointsHist", {})
     rhist = D.get("rankHist", {})
+    # The game lets the #1 team's cumulative ERS run away to 5000+, which looks
+    # nothing like the real Valve ranking (real #1 sits ~2000). Normalise the whole
+    # board so the top team lands near 2000 and everyone keeps their relative gaps.
+    _allpts = [phist[nm][-1] for nm in D["teamRank"] if phist.get(nm)]
+    _mx = max(_allpts) if _allpts else 0
+    _scale = (2000.0 / _mx) if _mx > 2050 else 1.0
     out = []
     for nm, rk in D["teamRank"].items():
         full_roster = sorted(rosters.get(nm, []), key=lambda x: x[0], reverse=True)
@@ -1250,7 +1256,7 @@ def build_ranking(D, team_won=None):
         top5 = [x[0] for x in full_roster[:5]]
         avg_ovr = round(sum(top5) / len(top5), 1) if top5 else 0
         pv = phist.get(nm)
-        cur_pts = int(round(pv[-1])) if pv else 0
+        cur_pts = int(round(pv[-1] * _scale)) if pv else 0
         rv = rhist.get(nm)
         move = (rv[-2] - rv[-1]) if (rv and len(rv) >= 2) else 0   # +ve = climbed
         out.append({"rank": rk, "team": nm, "full": D["teamFull"].get(nm, nm),
@@ -1313,7 +1319,12 @@ def catalog_base(root):
         name = a[0]; tier = L(at(a, 4)); prize = L(at(a, 6))
         if tier == 1 and prize < 300000:      # drop the many tiny regional/filler events
             continue
-        out.append({"name": name, "tier": tier, "tierName": TIER_NAME.get(tier, "Tier 2"),
+        # a REAL Valve Major is only the event actually named "... Major" (there are
+        # just two a year in real life). The game marks several premier events tier 2,
+        # but those are top Tier-1 events, not Majors — don't call them Majors.
+        is_major = "major" in name.lower()
+        out.append({"name": name, "tier": tier, "major": 1 if is_major else 0,
+                    "tierName": "Major" if is_major else ("Tier 1" if tier in (0, 2) else "Tier 2"),
                     "rating": round(Dd(at(a, 5)), 2), "prize": prize,
                     "city": S(at(a, 10)) or "", "country": S(at(a, 9)) or ""})
     return out

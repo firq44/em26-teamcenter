@@ -18,6 +18,8 @@ LOG  = os.path.join(HERE, "teamcenter_server.log")
 
 _cache = {"html": None, "team": None, "save_mtime": 0.0}
 _lock = threading.Lock()
+_httpd = None          # the running HTTP server (set in main), so the game-exit
+                       # watcher can shut it down cleanly when the game closes
 
 def cur_save_mtime():
     try:
@@ -208,23 +210,48 @@ def _game_running():
     except Exception:
         return True   # unknown -> assume running, i.e. don't touch locked files
 
-def _pending_watcher():
-    """Wait for the game to close, then drop any DLL/config updates that were
-    downloaded while the game held them locked into place for the next launch."""
+def _final_save():
+    """Persist the full career archive from the final autosave, without the heavy
+    photo/texture/logo work — so everything we accumulated is on disk before the
+    server quits. The archive itself is also written on every F3/rebuild, so this
+    is a belt-and-suspenders flush of the very latest state."""
     try:
-        import updater
-    except Exception:
-        return
-    # give the game a moment to actually start after F3
-    time.sleep(20)
+        save_dir = G.latest_save()
+        root = G.MP(open(os.path.join(save_dir, "SlotData.mpack"), "rb").read()).parse()
+        D = G.extract(G.A(root) or [])
+        G.aggregate(D, save_dir)
+        G.merge_archive(D)      # writes career_archive_<save>.json (tournaments, MVP, stats, history)
+        log("final career state saved after game exit")
+    except Exception as e:
+        log("final save err: %s" % e)
+
+def _game_exit_watcher():
+    """Wait for the game to close, then: (1) save the final career state, (2) apply
+    any DLL/config updates that were locked while the game ran, and (3) SHUT THE
+    SERVER DOWN COMPLETELY so nothing lingers on the PC. The BepInEx plugin starts
+    a fresh server on the next F3 in career, which reloads everything from the
+    saved archive."""
+    time.sleep(20)                       # let the game actually start after F3
     while _game_running():
         time.sleep(6)
-    try:
+    # --- the game has exited ---
+    _final_save()                        # 1) everything we did is safely on disk
+    try:                                 # 2) apply mod/config updates unlocked by exit
+        import updater
         moved = updater.apply_pending(HERE)
         if moved:
             log("applied %d pending mod update(s) after game exit" % moved)
     except Exception as e:
         log("apply_pending err: %s" % e)
+    # 3) fully stop the server so it stops using the PC
+    log("game closed -> shutting down Team Center server")
+    try:
+        if _httpd is not None:
+            threading.Thread(target=_httpd.shutdown, daemon=True).start()
+            time.sleep(1.0)
+    except Exception as e:
+        log("shutdown err: %s" % e)
+    os._exit(0)                          # terminate the pythonw process for good
 
 def self_update():
     """Pull latest files; if core code changed, restart this process so it loads."""
@@ -258,8 +285,8 @@ def self_update():
 def main():
     url = "http://localhost:%d/" % PORT
     self_update()   # safe no-op unless update_config.json points at a real repo
-    # apply locked mod-DLL updates as soon as the game closes (background)
-    threading.Thread(target=_pending_watcher, daemon=True).start()
+    # save state + apply locked mod updates + shut down when the game closes
+    threading.Thread(target=_game_exit_watcher, daemon=True).start()
     if not port_free(PORT):
         log("server already running -> rebuild + open browser")
         try:
@@ -275,9 +302,12 @@ def main():
     socketserver.ThreadingTCPServer.allow_reuse_address = True
     httpd = socketserver.ThreadingTCPServer(("127.0.0.1", PORT), Handler)
     httpd.daemon_threads = True
+    global _httpd
+    _httpd = httpd          # let the game-exit watcher stop it cleanly
     threading.Thread(target=lambda: webbrowser.open(url), daemon=True).start()
     log("serving on %s" % url)
     httpd.serve_forever()
+    log("server stopped")
 
 if __name__ == "__main__":
     try: main()
