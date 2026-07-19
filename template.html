@@ -63,6 +63,13 @@ input.search{width:100%;max-width:300px;background:#232a30;border:1px solid var(
 .mphoto{width:168px;height:196px;border-radius:8px;object-fit:cover;object-position:top;flex:0 0 auto;position:relative;z-index:1}.mheroinfo{padding-bottom:6px;position:relative;z-index:1}
 .mhero .hbg{height:210px}
 .ov{background:var(--pan2);border-radius:6px;padding:3px 9px;font-weight:800;color:var(--gold)}
+.segbar{display:inline-flex;gap:2px;background:var(--dark);border-radius:7px;padding:3px;margin:10px 0 6px}
+.seg{background:none;border:none;color:var(--mut);padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;border-radius:5px;font-family:inherit;white-space:nowrap}
+.seg.on{background:var(--gold);color:#1a1f24}
+.segpane{display:none}.segpane.on{display:block}
+#statModeSeg{display:inline-flex;gap:2px;background:var(--dark);border-radius:7px;padding:3px}
+#statModeSeg button{background:none;border:none;color:var(--mut);padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;border-radius:5px;font-family:inherit}
+#statModeSeg button.on{background:var(--gold);color:#1a1f24}
 .kpis4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0}
 .kpis4 .c{background:var(--pan2);border-radius:6px;padding:10px}.kpis4 .c span{color:var(--mut);font-size:11px}.kpis4 .c b{display:block;font-size:19px}
 .attgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px 18px}
@@ -333,7 +340,23 @@ function av(p){const src=photoURL(p)||SIL;return `<div class="av"><img src="${sr
 const fmt=n=>'$'+(n||0).toLocaleString('en-US');
 function avn(nick){const p=P[nick]||{nick:nick};return av(p);}
 function ctry(nick){const p=P[nick];return p?flag(p.country):'';}
-function stat(p){return p.stats||{maps:0,kd:'-',adr:'-',mvp:0,rating:'-',k:0,d:0,a:0,kpr:'-'};}
+window.STATMODE='season';   // 'season' (current) or 'career' (all-time, across seasons)
+function stat(p){var s=(window.STATMODE==='career'&&p.career)?p.career:p.stats;return s||{maps:0,kd:'-',adr:'-',mvp:0,rating:'-',k:0,d:0,a:0,kpr:'-'};}
+// re-render everything under the chosen stat mode, keeping your current tab
+window.setStatMode=function(m){
+ if(window.STATMODE===m)return; window.STATMODE=m;
+ document.querySelectorAll('#statModeSeg button').forEach(function(b){b.classList.toggle('on',b.dataset.m===m);});
+ var t=window.__tcTab||'info'; try{render();initSearch();applySort();}catch(e){} show(t);
+};
+// per-card stats block with its own Сезон/Карьера switch (shows all-time kd side by side)
+function _kpi(x){return '<div class="kpis4"><div class="c"><span>Рейтинг</span><b style="color:var(--gold)">'+x.rating+'</b></div><div class="c"><span>K/D</span><b>'+x.kd+'</b></div><div class="c"><span>ADR</span><b>'+x.adr+'</b></div><div class="c"><span>KPR</span><b>'+x.kpr+'</b></div></div>';}
+function statsBlock(p){var s=p.stats;if(!s)return '<p style="color:var(--mut);margin-top:12px">Нет сыгранных матчей.</p>';
+ var c=p.career;
+ if(!c||c.maps===s.maps) return '<div class="statbox"><div class="sh">Статистика <span>· '+s.maps+' карт</span></div>'+_kpi(s)+'</div>';
+ return '<div class="statbox"><div class="sh">Статистика</div>'
+  +'<div class="segbar"><button class="seg on" onclick="segSwitch(this,0)">Сезон · '+s.maps+' карт</button><button class="seg" onclick="segSwitch(this,1)">За карьеру · '+c.maps+' карт</button></div>'
+  +'<div class="segpane on">'+_kpi(s)+'</div><div class="segpane">'+_kpi(c)+'</div></div>';}
+window.segSwitch=function(btn,idx){var box=btn.closest('.statbox');box.querySelectorAll('.seg').forEach(function(b,i){b.classList.toggle('on',i===idx);});box.querySelectorAll('.segpane').forEach(function(p,i){p.classList.toggle('on',i===idx);});};
 // tournament trophies (won = [{n:name, m:1 if major}]) — clickable to the tournament page
 const TICON=n=>(D.tourn_icons||{})[n];
 function trophyStrip(won){if(!won||!won.length)return '';
@@ -755,8 +778,7 @@ window.openP=nick=>{const p=P[nick];if(!p)return;window.__tcNick=nick;const s=p.
  </div></div>
  ${trophies}
  ${(p.mvp||p.evp)?`<div class="statbox"><div class="sh">Награды турниров</div><div class="mbadges" style="justify-content:flex-start;align-items:center;gap:14px">${mvpBadge(p,26)}${evpBadge(p)}</div></div>`:''}
- ${s?`<div class="statbox"><div class="sh">Статистика <span>· ${s.maps} карт</span></div>
-   <div class="kpis4"><div class="c"><span>Рейтинг</span><b style="color:var(--gold)">${s.rating}</b></div><div class="c"><span>K/D</span><b>${s.kd}</b></div><div class="c"><span>ADR</span><b>${s.adr}</b></div><div class="c"><span>KPR</span><b>${s.kpr}</b></div></div></div>`:'<p style="color:var(--mut);margin-top:12px">Нет сыгранных матчей.</p>'}
+ ${statsBlock(p)}
  ${(p.hist&&p.hist.length>1)?`<div class="statbox"><div class="sh">Развитие формы <span>· рейтинг по последним ${p.hist.length} матчам</span></div>${devSVG(p.hist)}</div>`:''}
  ${att.length?`<div class="statbox"><div class="sh">Навыки</div>${radarSVG(p.attrs)}</div>`:''}`;
  document.getElementById('modal').classList.add('on');};

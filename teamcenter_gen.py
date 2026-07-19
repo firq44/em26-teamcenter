@@ -370,7 +370,8 @@ def aggregate(D, save_dir):
         rounds = max(1, g[6]); dd = max(1, g[2])
         st = {"maps": g[0], "k": g[1], "d": g[2], "a": g[3], "mvp": g[5],
               "kd": round(g[1]/dd, 2), "adr": round(g[4]/rounds, 1), "kpr": round(g[1]/rounds, 2),
-              "rating": round(0.45 + 0.55*(g[1]/dd)*(g[4]/rounds/78.0), 2)}
+              "rating": round(0.45 + 0.55*(g[1]/dd)*(g[4]/rounds/78.0), 2),
+              "raw": [g[0], g[1], g[2], g[3], g[4], g[5], g[6]]}   # maps,k,d,a,dmg,mvp,rounds
         if nk in D["players"]:
             D["players"][nk]["stats"] = st
         else:
@@ -865,26 +866,36 @@ def compute_trophies(D):
 # the current finished tournaments in (deduped by a content hash so nothing is
 # ever overwritten or double-counted) and then feeds the FULL accumulated history
 # back into the dashboard, so tournaments, awards and trophies survive forever.
-ARCHIVE = os.path.join(HERE, "career_archive.json")
+def _archive_path():
+    """One archive file PER career/save slot, so different careers never mix."""
+    try:
+        sid = os.path.basename(os.path.normpath(latest_save()))
+    except Exception:
+        sid = "default"
+    if not sid:
+        sid = "default"
+    return os.path.join(HERE, "career_archive_%s.json" % sid)
 
 def load_archive():
     try:
-        with io.open(ARCHIVE, encoding="utf-8") as f:
+        with io.open(_archive_path(), encoding="utf-8") as f:
             a = json.load(f)
         if not isinstance(a, dict):
             a = {}
     except Exception:
         a = {}
     a.setdefault("tournaments", {})
+    a.setdefault("pstats", {})
     a.setdefault("seq", 0)
     return a
 
 def save_archive(a):
     try:
-        tmp = ARCHIVE + ".new"
+        p = _archive_path()
+        tmp = p + ".new"
         with io.open(tmp, "w", encoding="utf-8") as f:
             json.dump(a, f, ensure_ascii=False)
-        os.replace(tmp, ARCHIVE)
+        os.replace(tmp, p)
     except Exception as e:
         log("archive save err: %s" % e)
 
@@ -945,7 +956,41 @@ def merge_archive(D):
                    "standings": t["standings"], "table": t["table"],
                    "winner": winner, "roster": roster, "mvp": mvp, "evp": evp, "seq": seq}
     arch["seq"] = seq
+
+    # ---- career stat accumulation (survives season resets) ----
+    # Per-season aggregates reset when the game clears MapStats. We keep a running
+    # career total per player: whenever the current map count DROPS (season/team
+    # reset), we bank the previous peak into "career" and start counting again.
+    pst = arch.setdefault("pstats", {})
+    for nk, p in D["players"].items():
+        st = p.get("stats")
+        if not st or "raw" not in st:
+            continue
+        cur = list(st["raw"])                    # [maps,k,d,a,dmg,mvp,rounds]
+        rec = pst.get(nk)
+        if rec is None:
+            pst[nk] = {"career": [0, 0, 0, 0, 0, 0, 0], "last": cur}
+        else:
+            last = rec.get("last") or [0] * 7
+            if len(last) >= 1 and cur[0] < last[0] - 1:   # real drop -> season reset
+                car = rec.get("career") or [0] * 7
+                rec["career"] = [c + l for c, l in zip(car, last)]
+            rec["last"] = cur
     save_archive(arch)
+
+    # attach career totals (career banked + current season) onto each player
+    for nk, p in D["players"].items():
+        rec = pst.get(nk)
+        if not rec:
+            continue
+        tot = [c + l for c, l in zip(rec.get("career", [0] * 7), rec.get("last", [0] * 7))]
+        maps, k, d, a, dmg, mvp, rnds = tot
+        if maps <= 0:
+            continue
+        dd = max(1, d); rr = max(1, rnds)
+        p["career"] = {"maps": maps, "k": k, "d": d, "a": a, "mvp": mvp,
+                       "kd": round(k / dd, 2), "adr": round(dmg / rr, 1), "kpr": round(k / rr, 2),
+                       "rating": round(0.45 + 0.55 * (k / dd) * (dmg / rr / 78.0), 2)}
 
     recs = sorted(td.values(), key=lambda r: r.get("seq", 0))
     D["tournaments"] = [{"name": r["name"], "guid": r.get("guid", ""), "tier": r.get("tier", 0),
@@ -1168,7 +1213,9 @@ def build_payload(D, photos, team_logo, tlogos):
             if aw["evp"]: o["evp"] = aw["evp"]   # tournament EVP count
             if aw.get("mvpEvents"): o["mvpEvents"] = aw["mvpEvents"]   # which events
             if aw.get("evpEvents"): o["evpEvents"] = aw["evpEvents"]
-        if p.get("stats"): o["stats"] = p["stats"]
+        if p.get("stats"):
+            o["stats"] = {k2: v2 for k2, v2 in p["stats"].items() if k2 != "raw"}   # drop bulky raw
+        if p.get("career"): o["career"] = p["career"]                                # all-time totals
         te = team_earnings.get(p["team"], 0)
         if te and team_count.get(p["team"]):
             o["earnings"] = int(te / team_count[p["team"]])   # even split of team prize
