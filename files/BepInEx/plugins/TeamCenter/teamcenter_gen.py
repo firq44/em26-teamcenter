@@ -207,6 +207,10 @@ def extract(root):
               "overall": L(at(p,9)), "potential": L(at(p,22)) if len(p) > 22 else 0,
               "value": L(at(p,27)) if len(p) > 27 else 0,   # market value (field 27)
               "age": age_from_ext(at(p,10) if len(p) > 10 else None), "attrs": {}, "stats": None}
+        # teamless players (free agents / retired) store a placeholder overall of 100
+        # in the data even when their real skill is far lower — don't trust it.
+        if (not pl["team"]) and pl["overall"] == 100:
+            pl["overall"] = pl["potential"] if pl["potential"] and pl["potential"] < 100 else 0
         a14 = A(at(p,14))
         if a14 and len(a14) > 0:
             ad = M(a14[0])
@@ -1241,7 +1245,10 @@ def build_payload(D, photos, team_logo, tlogos):
                 "value": p.get("value", 0), "role": role_single(p)} for p in tal[:150]]
     # best value-for-money buys: a strong overall for a low market value. Each $15k of
     # value "costs" one overall point, so cheap-but-good players float to the top.
-    brg = [p for p in D["players"].values() if p.get("value", 0) > 0 and p.get("overall", 0) >= 55]
+    # only real transfer targets: players currently ON a team (teamless free agents
+    # carry an unreliable overall and aren't a "buy" in the same sense)
+    brg = [p for p in D["players"].values()
+           if p.get("value", 0) > 0 and p.get("overall", 0) >= 55 and p.get("team")]
     brg.sort(key=lambda p: p.get("overall", 0) - p.get("value", 0) / 15000.0, reverse=True)
     bargains = [{"nick": p["nick"], "first": p.get("first", ""), "last": p.get("last", ""),
                  "country": p.get("country", ""), "team": p.get("team", ""), "age": p.get("age"),
