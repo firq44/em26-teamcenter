@@ -1,4 +1,4 @@
-{
+﻿{
  "files": {
   "BepInEx/config/BepInEx.cfg": "ac2054356d2c84c858e459f3d327cb8c98b916b538990f132f3626ded656c236",
   "BepInEx/config/com.esportsmanager.modkit.autotraining.cfg": "7a3b3e02160decc7e773d96101714b10f6b5da3efe64c17fcd095ce0112fdd52",
@@ -35,7 +35,7 @@
   "BepInEx/plugins/Headshot Mod/BepInEx/sounds/headshot.mp3": "c59e24477826e8d08ee7f486a54be421c1e0848ec3323ea87859357036c233ec",
   "BepInEx/plugins/MapScoreRating/MapScoreRating.dll": "2d9bb74757c24a6e58ae3362bed8100bc56c2f2431ec50f29fe1d7ae383c1f4c",
   "BepInEx/plugins/MatchWinrateTuning/MatchWinrateTuning.dll": "85364d7e439880a9305bae12ed9c87ad8ef7359d6d701a6cb3d80ed3981e2b88",
-  "BepInEx/plugins/NationalTeam/NationalTeamsMod.dll": "c1941bb971d264cd0442db495779add534682398ce4ff6650384bb7b84b8bee9",
+  "BepInEx/plugins/NationalTeam/NationalTeamsMod.dll": "35c6876dcef6a7fdb86b7c1dff54c37c470d9cba32944c973528a9458e3e4a08",
   "BepInEx/plugins/OpponentTierStats/OpponentTierStats.dll": "30e29dc8049e72876cff3cf46e1700cd01825d06389f634de139c1ec642538c6",
   "BepInEx/plugins/OpponentTierStats/OpponentTierStats.dll-Force": "30e29dc8049e72876cff3cf46e1700cd01825d06389f634de139c1ec642538c6",
   "BepInEx/plugins/PlayerHonors/PlayerHonors.dll": "ed413c29840ef834c223e933514c907c0a302c63646282e9b509c25e2ba14b3c",
