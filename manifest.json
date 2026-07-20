@@ -1,4 +1,4 @@
-﻿{
+{
  "files": {
   "BepInEx/config/BepInEx.cfg": "ac2054356d2c84c858e459f3d327cb8c98b916b538990f132f3626ded656c236",
   "BepInEx/config/com.esportsmanager.modkit.autotraining.cfg": "7a3b3e02160decc7e773d96101714b10f6b5da3efe64c17fcd095ce0112fdd52",
@@ -45,15 +45,15 @@
   "BepInEx/plugins/TeamCenter/flags.json": "d695cef8f8c61c3db1e8397a89c65a46ec3c8177360ed2f3315ab193096a9c79",
   "BepInEx/plugins/TeamCenter/game_logos.json": "d00f6a1c7848440c03b1def3a8cf5c5b468bc2c5ff2f460c39935a97ec861f97",
   "BepInEx/plugins/TeamCenter/TeamCenter.dll": "dbb6baa6629be5303ac8ed455c0e6dcf39108ee4797406c1ab8041b030c6101c",
-  "BepInEx/plugins/TeamCenter/teamcenter_gen.py": "d3e0da581e2b81a3fbcfbc0f073ce53ea4786e1218087cd680da7eea9e3b8105",
+  "BepInEx/plugins/TeamCenter/teamcenter_gen.py": "99cf0e8a6c2fd6f34e2ef841ad711e9de195da5cfe384864e17cc0ab53e913e5",
   "BepInEx/plugins/TeamCenter/teamcenter_server.py": "2e2044fe43ccd08e40cfdf30cbcb7d3fd78a702895fd96fcfbf5901d3deab02d",
   "BepInEx/plugins/TeamCenter/template.html": "4f9eb559505a3f424f6d12748fcded487cdc92731c8b03a114ff82cc6df36c9d",
   "BepInEx/plugins/TeamCenter/updater.py": "297e63656391a69dffb8d90d2e54f9d14b72f1687ff896d8672a774b5efaa63c",
   "BepInEx/plugins/TeamCenter/update_config.json": "b510cec75da3f7457f375aaad575495f7f9cdeaf9e13dd110192aaf34f678a2f",
   "BepInEx/plugins/TeamCenter/__pycache__/updater.cpython-313.pyc": "5d7d1087e52cbcb5871c28d8287ad568d642dbe3d518e8d9b065dc8f67a9eb7f",
-  "EsportsManager_Data/StreamingAssets/default.emdb": "c1c6605c95d7916579625c14cb81e69edff102c58b21347542c5c630ad17451c",
-  "_lowdb/EM26_database.emdb": "c1c6605c95d7916579625c14cb81e69edff102c58b21347542c5c630ad17451c",
-  "teamcenter_gen.py": "d3e0da581e2b81a3fbcfbc0f073ce53ea4786e1218087cd680da7eea9e3b8105",
+  "EsportsManager_Data/StreamingAssets/default.emdb": "c6e25a2bba2e80819d478b231848d14f61ad2bc3b63c9dd15b7acae342269005",
+  "_lowdb/EM26_database.emdb": "c6e25a2bba2e80819d478b231848d14f61ad2bc3b63c9dd15b7acae342269005",
+  "teamcenter_gen.py": "99cf0e8a6c2fd6f34e2ef841ad711e9de195da5cfe384864e17cc0ab53e913e5",
   "teamcenter_server.py": "2e2044fe43ccd08e40cfdf30cbcb7d3fd78a702895fd96fcfbf5901d3deab02d",
   "template.html": "4f9eb559505a3f424f6d12748fcded487cdc92731c8b03a114ff82cc6df36c9d",
   "flags.json": "d695cef8f8c61c3db1e8397a89c65a46ec3c8177360ed2f3315ab193096a9c79",

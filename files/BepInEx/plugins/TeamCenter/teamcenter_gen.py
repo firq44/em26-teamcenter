@@ -514,21 +514,38 @@ def _tex_rgba(idx, resS_path, name):
     if len(buf) < ssize: return None
     return buf, w, h
 
+def _ci_key(idx, name):
+    # game photo textures use mixed case ("Magisk_Reif", "electroNic") while some
+    # generated candidates are lowercased ("magisk_reif"). Resolve case-insensitively.
+    if name in idx:
+        return name
+    nl = name.lower()
+    cache = getattr(idx, "_lc", None)
+    if cache is None:
+        cache = {k.lower(): k for k in idx}
+        try: idx._lc = cache
+        except Exception: pass
+    return cache.get(nl)
+
 def extract_photo(idx, resS_path, nick, first="", last=""):
     for name in _photo_names(nick, first, last):
-        r = _tex_rgba(idx, resS_path, name)
+        key = _ci_key(idx, name)
+        if not key: continue
+        r = _tex_rgba(idx, resS_path, key)
         if r:
             try:
                 return rgba_to_jpg_b64(r[0], r[1], r[2], 190)
             except Exception as e:
-                log("jpg fail %s: %s" % (name, e))
+                log("jpg fail %s: %s" % (key, e))
     return None
 
 def extract_photo_raw(idx, resS_path, nick, first="", last="", tw=256):
     # raw JPEG bytes for the on-demand /photo endpoint (any player, not just roster)
     from PIL import Image
     for name in _photo_names(nick, first, last):
-        r = _tex_rgba(idx, resS_path, name)
+        key = _ci_key(idx, name)
+        if not key: continue
+        r = _tex_rgba(idx, resS_path, key)
         if not r: continue
         try:
             buf, w, h = r
