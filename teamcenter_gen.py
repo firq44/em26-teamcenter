@@ -147,9 +147,14 @@ def game_year(root):
 
 _T20_TAG = re.compile(r"<[^>]+>")
 _T20_RX = re.compile(r"[Тт]оп[\-\s]?20\s+игроков\s+(\d{4}).*?[№#]\s*(\d+)\s*[—\-–]\s*(\S+)")
+# The #1 (the winner) is announced NOT as "...№1 — NICK" but as a separate
+# "Player of the Year" email: "Игрок <b>YEAR</b> года: <b>NICK</b>!". Without this
+# the #1 player never got their year-end medal (every other rank did).
+_POTY_RX = re.compile(r"[Ии]грок\s+(\d{4})\s+года\s*:\s*(.+?)\s*!*\s*$")
 def parse_game_top20(root):
     """The game's OWN year-end Top-20, read straight from the EMTV news emails in
-    root[1]. Each email subject is 'Топ-20 игроков <b>YEAR</b> года: <b>№RANK</b> — <b>NICK</b>'.
+    root[1]. Ranks 2-20 come as 'Топ-20 игроков <b>YEAR</b> года: <b>№RANK</b> —
+    <b>NICK</b>'; the #1 winner comes as 'Игрок <b>YEAR</b> года: <b>NICK</b>!'.
     This is the authoritative ranking the game shows (e.g. s1mple #16), NOT a
     dashboard re-computation. Returns {year(int): {rank(int): nick}}."""
     out = {}
@@ -158,9 +163,19 @@ def parse_game_top20(root):
         if not ea or len(ea) < 4:
             continue
         subj = S(at(ea, 3)) or ""
-        if "оп-20 игроков" not in subj and "оп 20 игроков" not in subj:
-            continue
         clean = _T20_TAG.sub("", subj).strip()
+        # #1 — Player of the Year
+        if "оп-20 игроков" not in clean and "оп 20 игроков" not in clean:
+            mp = _POTY_RX.search(clean)
+            if mp:
+                try:
+                    yr = int(mp.group(1)); nk = mp.group(2).strip().strip("!").strip()
+                except Exception:
+                    nk = None
+                if nk:
+                    out.setdefault(yr, {})[1] = nk
+            continue
+        # ranks 2-20
         m = _T20_RX.search(clean)
         if not m:
             continue
@@ -182,7 +197,8 @@ def clean_nick(n):
 def extract(root):
     D = {"myTeam": "", "players": {}, "roster": [], "teamRank": {}, "teamFull": {},
          "teamCountry": {}, "trophies": [], "team_medals": [0, 0, 0], "staff": [], "coach": None,
-         "cash": 0, "txns": [], "avgAge": None, "scoreboards": [], "pointsHist": {}, "rankHist": {}}
+         "cash": 0, "txns": [], "avgAge": None, "scoreboards": [], "pointsHist": {}, "rankHist": {},
+         "disp": {}}
     org = A(at(root, 22)); D["myTeam"] = S(at(org, 1)) or ""
     my = D["myTeam"]
     D["gameYear"] = game_year(root)
@@ -249,6 +265,9 @@ def extract(root):
         if not p: continue
         nk = S(at(p,0))
         if nk is None: continue
+        f1 = S(at(p,1))                 # field[1] = the game's real DISPLAY nick;
+        if f1 and f1 != nk:             # field[0] (nk) is the internal key (e.g. "huNter_kovac")
+            D["disp"][nk] = f1          # used only to translate the SHOWN name (photos/stats stay on nk)
         pl = {"nick": nk, "first": S(at(p,2)) or "", "last": S(at(p,3)) or "",
               "country": S(at(p,5)) or "", "team": S(at(p,6)) or "",
               "overall": L(at(p,9)), "potential": L(at(p,22)) if len(p) > 22 else 0,
@@ -286,10 +305,11 @@ def extract(root):
                     pl["tournGuids"] = gs
     D["tournaments"] = parse_tournaments_raw(root)
     D["catalog"] = catalog_base(root)
-    # REAL tournament MVP: the tournament database (root[51]) stores the actual MVP
-    # nick in slot 18 of each record — this is exactly what the game shows.
+    # REAL tournament MVP: the tournament database stores the actual MVP nick in
+    # slot 18 of each record — this is exactly what the game shows. Use the merged
+    # catalog so recent events (whose MVP lives in the DataTournament file) count.
     D["tourn_mvp"] = {}
-    for rec in (A(at(root, 51)) or []):
+    for rec in full_catalog(root):
         ra = A(rec)
         if not ra or len(ra) < 19:
             continue
@@ -297,6 +317,8 @@ def extract(root):
         if nm and mvp:
             D["tourn_mvp"][nm] = mvp
     D["transfers"] = parse_transfers(root)
+    # real per-player career prize money (participation-based, transfer-stable)
+    D["player_earnings"] = compute_player_earnings(root, D["players"], D["disp"])
     D["roster"] = sorted([p for p in D["players"].values() if p["team"] == my],
                          key=lambda p: p["overall"], reverse=True)
     ages = [float(p["age"]) for p in D["roster"] if p["age"] is not None]
@@ -478,9 +500,10 @@ def rgba_to_jpg_b64(buf, w, h, tw):
     img = img.transpose(Image.FLIP_TOP_BOTTOM)          # texture data is bottom-up
     bg = Image.new('RGBA', (w, h), (37, 27, 20, 255))    # dark composite backdrop
     comp = Image.alpha_composite(bg, img).convert('RGB')
-    th = max(1, int(round(h / w * tw)))
-    comp = comp.resize((tw, th), Image.LANCZOS)
-    out = io.BytesIO(); comp.save(out, 'JPEG', quality=82)
+    if w > tw:                                          # only downscale, never upscale (stays sharp)
+        th = max(1, int(round(h / w * tw)))
+        comp = comp.resize((tw, th), Image.LANCZOS)
+    out = io.BytesIO(); comp.save(out, 'JPEG', quality=92)
     return "data:image/jpeg;base64," + base64.b64encode(out.getvalue()).decode('ascii')
 
 def rgba_to_png_b64(buf, w, h):
@@ -514,21 +537,73 @@ def _tex_rgba(idx, resS_path, name):
     if len(buf) < ssize: return None
     return buf, w, h
 
+def _tex_decode(idx, resS_path, name):
+    """Return (rgba_bytes, w, h) for a texture in ANY common Unity format, not just
+    uncompressed RGBA32. Compressed formats (BC7=25, DXT5/BC3=12, DXT1/BC1=10) are
+    decoded via texture2ddecoder (ships with UnityPy). Output is unflipped RGBA, so
+    the existing rgba_to_jpg_b64 (which flips + composites) handles it unchanged."""
+    t = idx.get(name)
+    if not t: return None
+    soff, ssize, w, h, fmt = t
+    data = read_resS(resS_path, soff, ssize)
+    if len(data) < ssize: return None
+    from PIL import Image
+    try:
+        if fmt == 4:                                   # RGBA32 (uncompressed)
+            if w * h * 4 != ssize: return None
+            return bytes(data), w, h
+        if fmt == 3:                                   # RGB24
+            if w * h * 3 != ssize: return None
+            return Image.frombytes('RGB', (w, h), bytes(data)).convert('RGBA').tobytes(), w, h
+        if fmt == 5:                                   # ARGB32
+            if w * h * 4 != ssize: return None
+            return Image.frombytes('RGBA', (w, h), bytes(data), 'raw', 'ARGB').tobytes(), w, h
+        try:
+            import texture2ddecoder as _t2
+        except Exception:
+            return None
+        if fmt == 25:   raw = _t2.decode_bc7(data, w, h)       # BC7
+        elif fmt == 12: raw = _t2.decode_bc3(data, w, h)       # DXT5 / BC3
+        elif fmt == 10: raw = _t2.decode_bc1(data, w, h)       # DXT1 / BC1
+        elif fmt == 26: raw = _t2.decode_bc6(data, w, h)       # BC6H
+        else: return None
+        return Image.frombytes('RGBA', (w, h), bytes(raw), 'raw', 'BGRA').tobytes(), w, h
+    except Exception as e:
+        log("tex decode %s fmt%d fail: %s" % (name, fmt, e))
+        return None
+
+def _ci_key(idx, name):
+    # game photo textures use mixed case ("Magisk_Reif", "electroNic") while some
+    # generated candidates are lowercased ("magisk_reif"). Resolve case-insensitively.
+    if name in idx:
+        return name
+    nl = name.lower()
+    cache = getattr(idx, "_lc", None)
+    if cache is None:
+        cache = {k.lower(): k for k in idx}
+        try: idx._lc = cache
+        except Exception: pass
+    return cache.get(nl)
+
 def extract_photo(idx, resS_path, nick, first="", last=""):
     for name in _photo_names(nick, first, last):
-        r = _tex_rgba(idx, resS_path, name)
+        key = _ci_key(idx, name)
+        if not key: continue
+        r = _tex_decode(idx, resS_path, key)
         if r:
             try:
-                return rgba_to_jpg_b64(r[0], r[1], r[2], 190)
+                return rgba_to_jpg_b64(r[0], r[1], r[2], 400)   # keep near-native res (sharper cards)
             except Exception as e:
-                log("jpg fail %s: %s" % (name, e))
+                log("jpg fail %s: %s" % (key, e))
     return None
 
 def extract_photo_raw(idx, resS_path, nick, first="", last="", tw=256):
     # raw JPEG bytes for the on-demand /photo endpoint (any player, not just roster)
     from PIL import Image
     for name in _photo_names(nick, first, last):
-        r = _tex_rgba(idx, resS_path, name)
+        key = _ci_key(idx, name)
+        if not key: continue
+        r = _tex_decode(idx, resS_path, key)
         if not r: continue
         try:
             buf, w, h = r
@@ -594,6 +669,19 @@ def tournament_logo_b64(path, maxpx=76):
         try: return file_b64(path)
         except Exception: return None
 
+def _logo_key(idx, team, full):
+    # EXACT match only. Case-insensitive matching wrongly grabbed player-photo
+    # textures (e.g. logo "MOUZ" -> the 400x417 photo texture "mouz"). A logo is
+    # never a portrait-shaped 400x417 photo, so also reject those defensively.
+    cands = [team + "_Logo", team] + ([full + "_Logo", full] if full else [])
+    for nm in cands:
+        if nm and nm in idx:
+            w, h, fmt = idx[nm][2], idx[nm][3], idx[nm][4]
+            if (w, h) == (400, 417):      # that's the player-photo dimension, not a crest
+                continue
+            return nm
+    return None
+
 def logo_for(team, full, idx, resS_path):
     # custom logos are named by short name OR full name (e.g. "VyaliePitony.png")
     for nm in (team, full):
@@ -602,11 +690,11 @@ def logo_for(team, full, idx, resS_path):
         if os.path.isfile(cf):
             try: return file_b64(cf)
             except Exception: pass
-    t = idx.get(team + "_Logo") or idx.get(team) or (idx.get(full + "_Logo") or idx.get(full) if full else None)
-    if t:
-        soff, ssize, w, h, fmt = t
-        if fmt == 4 and w * h * 4 == ssize:
-            try: return rgba_to_png_b64(read_resS(resS_path, soff, ssize), w, h)
+    key = _logo_key(idx, team, full)
+    if key:
+        r = _tex_decode(idx, resS_path, key)          # any format (BC7/DXT/RGBA32)
+        if r:
+            try: return rgba_to_png_b64(r[0], r[1], r[2])
             except Exception as e: log("logo fail %s: %s" % (team, e))
     return None
 
@@ -619,7 +707,7 @@ def _scale_png_b64(buf_rgba, w, h, maxpx):
     out = io.BytesIO(); img.save(out, 'PNG')
     return "data:image/png;base64," + base64.b64encode(out.getvalue()).decode('ascii')
 
-def logo_small(team, full, idx, resS_path, maxpx=120):
+def logo_small(team, full, idx, resS_path, maxpx=130):
     # downscaled crest for the ranking list / team cards (keeps 500 logos light)
     for nm in (team, full):
         if not nm: continue
@@ -627,11 +715,11 @@ def logo_small(team, full, idx, resS_path, maxpx=120):
         if os.path.isfile(cf):
             try: return tournament_logo_b64(cf, maxpx)
             except Exception: pass
-    t = idx.get(team + "_Logo") or idx.get(team) or (idx.get(full + "_Logo") or idx.get(full) if full else None)
-    if t:
-        soff, ssize, w, h, fmt = t
-        if fmt == 4 and w * h * 4 == ssize:
-            try: return _scale_png_b64(read_resS(resS_path, soff, ssize), w, h, maxpx)
+    key = _logo_key(idx, team, full)
+    if key:
+        r = _tex_decode(idx, resS_path, key)          # any format (BC7/DXT/RGBA32)
+        if r:
+            try: return _scale_png_b64(r[0], r[1], r[2], maxpx)
             except Exception as e: log("logo_small fail %s: %s" % (team, e))
     return None
 
@@ -666,7 +754,7 @@ def load_emdb():
             rows = list(_csv.reader(io.StringIO(z.read(fn).decode("utf-8-sig")), delimiter=";"))
             if not rows:
                 return m
-            H = rows[0]
+            H = [h.replace("﻿", "").strip() for h in rows[0]]   # tolerate stray/double BOM
             try:
                 ni = H.index("Nick"); pi = H.index("PhotoUrl")
             except ValueError:
@@ -691,49 +779,177 @@ def load_flags():
         log("flags load fail: %s" % e)
     return {}
 
+# ---- authoritative tournament results live in a SEPARATE file, not SlotData ----
+# The game keeps the real per-tournament final standings / MVP / bracket in
+# <save>/DataTournament/Tournaments_<year>.mpack (a dict keyed by tournament name).
+# SlotData's root[51] is only a partial mirror whose [16]/[23] are EMPTY for many
+# finished events (especially recent + smaller ones), which is why those events
+# showed as "upcoming" with no winner/trophies/MVP. We merge the DataTournament
+# file in so every finished event surfaces.
+_DT_CACHE = {}
+def load_datatournament():
+    try:
+        sd = latest_save()
+    except Exception:
+        return {}
+    import glob as _glob
+    dtdir = os.path.join(sd, "DataTournament")
+    files = sorted(_glob.glob(os.path.join(dtdir, "Tournaments_*.mpack")))
+    # Signature = each file's path + mtime + size. The game rewrites these files
+    # every time it saves (a tournament finishing writes a new result), so keying
+    # the cache on the signature makes the dashboard pick up new tournaments LIVE
+    # on the very next rebuild — no server restart needed.
+    try:
+        sig = tuple((f, os.path.getmtime(f), os.path.getsize(f)) for f in files)
+    except Exception:
+        sig = tuple(files)
+    cached = _DT_CACHE.get(sd)
+    if cached and cached[0] == sig:
+        return cached[1]
+    out = {}
+    for f in files:
+        try:
+            d = MP(open(f, "rb").read()).parse()
+            if isinstance(d, dict):
+                for nm, rec in d.items():
+                    if isinstance(nm, str):
+                        out[nm] = rec            # later years overwrite same-name (fine)
+        except Exception as e:
+            log("datatournament %s: %s" % (f, e))
+    _DT_CACHE[sd] = (sig, out)
+    return out
+
+def full_catalog(root):
+    """SlotData root[51] merged with the authoritative DataTournament records.
+    For any event that has a real result in the DataTournament file (its [16]
+    final standings or [23] team results), that fuller record wins; otherwise the
+    root[51] record is kept. Returns a list of raw tournament records."""
+    cat, order = {}, []
+    for e in (A(at(root, 51)) or []):
+        a = A(e)
+        if a and isinstance(a[0], str):
+            if a[0] not in cat:
+                order.append(a[0])
+            cat[a[0]] = e
+    for nm, rec in load_datatournament().items():
+        a = A(rec)
+        if not a:
+            continue
+        has_res = bool(A(at(a, 16))) or bool(M(at(a, 23)))
+        if has_res or nm not in cat:
+            if nm not in cat:
+                order.append(nm)
+            cat[nm] = rec
+    return [cat[nm] for nm in order]
+
+def parse_tournament_pstats(a):
+    """Per-tournament player stats from field[24]: each player value is
+    [5, name, STATS, True, team] where STATS[1]=kills, STATS[2]=deaths and a
+    [rating, n] pair (0.2..3.5) holds the player's tournament rating. Returns
+    {nick,team,k,d,kd,rating} sorted by rating desc. Empty until an event is played."""
+    pls = M(at(a, 24)) or {}
+    out = []
+    for nick, pv in pls.items():
+        if not nick or _is_guid_nick(nick):
+            continue
+        pa = A(pv)
+        if not pa or len(pa) < 5:
+            continue
+        sa = A(at(pa, 2))
+        if not sa:
+            continue
+        k = L(at(sa, 1)); d = L(at(sa, 2)); team = S(at(pa, 4)) or ""
+        rating = 0
+        for it in sa:
+            ia = A(it)
+            if isinstance(ia, list) and len(ia) == 2 and isinstance(ia[0], float) \
+               and isinstance(ia[1], int) and 0.2 <= ia[0] <= 3.5:
+                rating = round(ia[0], 2)
+        kd = round(k / d, 2) if d else float(k)
+        out.append({"nick": nick, "team": team, "k": k, "d": d, "kd": kd, "rating": rating})
+    out.sort(key=lambda x: (x["rating"], x["kd"]), reverse=True)
+    return out
+
 def parse_tournaments_raw(root):
     """Authoritative tournament results straight from the game's tournament
     catalog at root[51]. Each record (len>=26):
         [0]  name              [4]  tier (0=T1,1=lower,2=Major)
         [6]  total prizefund   [9]  country          [10] city
-        [16] PLAYOFF FINAL STANDINGS -> [[team, place, prize, points], ...]
-             (this is the game's real bracket result: place 1 = champion)
+        [16] (LEGACY) playoff final standings — the game USED to store the finished
+             bracket here, but a game update moved it out and [16] is now always
+             empty, which made every completed event show up as "upcoming" with no
+             winner/MVP/trophies.
+        [23] TEAM RESULTS -> {team: [placement, name, stats, flag, None]}. This is
+             the live, authoritative final table now: placement 1 = champion, 2 =
+             runner-up ... 8 = last paid spot, 0 = didn't reach the paid playoff.
         [18] tournament MVP nick   [22] tier code
-    The old code parsed root[1] — but root[1] is the NEWS feed, not tournament
-    standings, which is why brackets/winners used to contradict the game.
-    We only surface events that have a finished playoff table (a real winner).
-    Field [15] holds the real STAGES: a Swiss/group block and a playoff block,
-    both with actual match pairings — parsed into t['swiss'] and t['bracket']."""
+    We surface an event as finished once [23] contains a champion (a team at
+    placement 1). Prize per team is the prizefund split by the game's fixed
+    placement fractions (see _PRIZE_FRAC). Field [15] holds the real STAGES: a
+    Swiss/group block and a playoff block, parsed into t['swiss'] and t['bracket']."""
     out = []
-    for e in (A(at(root, 51)) or []):
+    # index root[51] by name: the per-player tournament stats (field [24]) live in
+    # SlotData root[51], but full_catalog may prefer the DataTournament copy whose [24]
+    # is empty — so we fall back to the root[51] entry for pstats.
+    _r51 = {}
+    for _e in (A(at(root, 51)) or []):
+        _a = A(_e)
+        if _a and isinstance(_a[0], str):
+            _r51.setdefault(_a[0], _a)
+    for e in full_catalog(root):
         a = A(e)
         if not a or len(a) < 24 or not isinstance(a[0], str):
             continue
-        name = a[0]
-        fin = A(at(a, 16))                 # playoff final standings (authoritative)
-        if not fin:
-            continue                        # not started / league-only -> no bracket result
+        name = _real_tname(a)          # resolve GUID-keyed new-season events to their real name
+        pf = L(at(a, 6))
+        # prefer the exact final standings [16] (team, place, prize, points) from
+        # the DataTournament file; fall back to [23] team results (prize derived).
+        fin = A(at(a, 16))
+        teamres = M(at(a, 23)) or {}
         standings = {}
         table = []
-        for row in fin:
-            r = A(row)
-            if not r or len(r) < 2 or not S(at(r, 0)):
-                continue
-            tm = S(at(r, 0)); pl = L(at(r, 1))
-            standings[tm] = pl
-            table.append({"team": tm, "place": pl,
-                          "prize": L(at(r, 2)) if len(r) > 2 else 0,
-                          "pts": L(at(r, 3)) if len(r) > 3 else 0})
-        if not table:
-            continue
+        has_champ = False
+        if fin:
+            for row in fin:
+                r = A(row)
+                if not r or len(r) < 2 or not S(at(r, 0)):
+                    continue
+                tm = S(at(r, 0)); pl = L(at(r, 1))
+                standings[tm] = pl
+                if pl == 1:
+                    has_champ = True
+                table.append({"team": tm, "place": pl,
+                              "prize": L(at(r, 2)) if len(r) > 2 else 0,
+                              "pts": L(at(r, 3)) if len(r) > 3 else 0})
+        elif teamres:
+            for tm, tv in teamres.items():
+                tva = A(tv)
+                if not tva or not tm:
+                    continue
+                pl = L(at(tva, 0))
+                if pl <= 0:
+                    continue                # 0 = eliminated before the paid playoff
+                standings[tm] = pl
+                if pl == 1:
+                    has_champ = True
+                table.append({"team": tm, "place": pl,
+                              "prize": int(round(pf * _PRIZE_FRAC.get(pl, 0))),
+                              "pts": 0})
+        if not table or not has_champ:
+            continue                        # not finished yet -> no real winner
         table.sort(key=lambda x: x["place"])
         champ = table[0]["team"]
         swiss, bracket = _parse_stages(at(a, 15), champ)
+        ps = parse_tournament_pstats(a)
+        if not ps:                                 # DataTournament copy has no [24] -> use root[51]
+            alt = _r51.get(a[0]) or _r51.get(name)
+            if alt is not None and alt is not a:
+                ps = parse_tournament_pstats(alt)
         out.append({"name": name, "guid": S(at(a, 22)) or "",
                     "standings": standings, "table": table,
-                    "swiss": swiss, "bracket": bracket,
+                    "swiss": swiss, "bracket": bracket, "pstats": ps,
                     "mvp": S(at(a, 18)) or "", "tier": L(at(a, 4)),
-                    "prize": L(at(a, 6)),
+                    "prize": pf,
                     "city": S(at(a, 10)) or "", "country": S(at(a, 9)) or ""})
     return out
 
@@ -831,19 +1047,180 @@ def _bracket_from_rounds(rounds, champion):
         out.append(ms)
     return out
 
+def _is_guid_nick(s):
+    """A regen/youth player's 'nick' is stored as a raw GUID (36 chars,
+    hyphens at 8/13/18/23). These have no real identity and the frontend
+    hides them, so we drop them from the transfer feed here too."""
+    if not s or len(s) != 36:
+        return False
+    return s[8] == "-" and s[13] == "-" and s[18] == "-" and s[23] == "-"
+
+def _real_tname(a):
+    """Display/base name of a tournament record. A repeated (new-season) event is
+    stored by the game under a GUID at field[0] but keeps its REAL name at [1] (and
+    mirrored at [21]); fall back to those so a second-cycle event shows its real name
+    instead of a raw GUID — it then flows through the normal per-season "(сезон N)"
+    separation. The GUID stays the catalog KEY upstream, so seasons remain distinct."""
+    n0 = a[0] if (a and isinstance(a[0], str)) else ""
+    if n0 and not _is_guid_nick(n0):
+        return n0
+    for idx in (1, 21):
+        v = S(at(a, idx))
+        if v and not _is_guid_nick(v):
+            return v
+    return n0
+
+def _ext_ts(v):
+    """Decode a msgpack ext (the game stores dates as ext-typed big-endian unix seconds)."""
+    if isinstance(v, (tuple, list)) and len(v) >= 3 and v[0] == "ext" and isinstance(v[2], (bytes, bytearray)):
+        try:
+            return int.from_bytes(bytes(v[2]), "big")
+        except Exception:
+            return None
+    return None
+
 def parse_transfers(root):
-    """root[5] = world transfers: [.,.,age,NICK,None,TO_team,FROM_team,FEE,...]."""
+    """root[5] = world transfers: [.,.,age,NICK,None,TO_team,FROM_team,agentfee,FEE,...].
+    field[7] is a smaller side amount (agent/weekly); field[8] is the actual transfer
+    fee the game shows (verified vs in-game: huNter 253.5K, Staehr 520K, s1mple 234K).
+    Most moves are free (fee=0, e.g. out-of-contract signings) — those are real and
+    kept; only GUID regens are skipped."""
     out = []
     for e in (A(at(root, 5)) or []):
         a = A(e)
-        if not a or len(a) < 8:
+        if not a or len(a) < 9:
             continue
         nick = S(at(a, 3))
-        if not nick:
+        if not nick or _is_guid_nick(nick):
             continue
         out.append({"nick": nick, "to": S(at(a, 5)) or "", "from": S(at(a, 6)) or "",
-                    "fee": L(at(a, 7)), "age": L(at(a, 2))})
+                    "fee": L(at(a, 8)), "age": L(at(a, 2)),
+                    "date": _ext_ts(a[1] if len(a) > 1 else None) or _ext_ts(a[0] if a else None)})
     return out
+
+def build_club_history(transfers, players, tourn_winner=None):
+    """HLTV-style club history per player, from the transfer log:
+      - each stint = {team, from, to (unix; to=None means Present), days}
+      - trophies the player won WHILE at that team (a title the player won was won with
+        the team that won it, so we group the player's won titles by that winner team)
+      - totals: teams count, days in current team, days across all teams
+    Rebuilt every build, so a new transfer updates it immediately. Keyed by internal key."""
+    tourn_winner = tourn_winner or {}
+    now_ts = 0
+    moves = {}                                   # display nick -> [transfer dict, ...]
+    for t in (transfers or []):
+        nk = t.get("nick")
+        if not nk or _is_guid_nick(nk):
+            continue
+        if t.get("date"):
+            now_ts = max(now_ts, t["date"])
+        moves.setdefault(nk, []).append(t)
+    DAY = 86400.0
+    hist = {}
+    for pk, p in players.items():
+        cur = p.get("team")
+        disp = p.get("nick", pk)
+        mv = moves.get(disp) or moves.get(pk)
+        if not cur:
+            continue
+        mvs = sorted([m for m in (mv or []) if m.get("to")], key=lambda m: m.get("date") or 0)
+        # build stints (team, start, end) oldest -> newest from the move chain
+        stints = []
+        if mvs:
+            ff = mvs[0].get("from")
+            if ff:
+                stints.append([ff, None, mvs[0].get("date")])       # team before the first logged move
+            for i, m in enumerate(mvs):
+                start = m.get("date")
+                end = mvs[i + 1].get("date") if i + 1 < len(mvs) else None   # None = still there
+                stints.append([m.get("to"), start, end])
+        else:
+            stints.append([cur, None, None])                        # never moved in this career
+        merged = []
+        for tm, s, e in stints:
+            if not tm:
+                continue
+            if merged and merged[-1][0] == tm:
+                merged[-1][2] = e
+            else:
+                merged.append([tm, s, e])
+        if len(merged) < 2:                       # nothing interesting to show
+            continue
+        won_by_team = {}
+        for n, mj in (p.get("won") or []):
+            w = tourn_winner.get(n)
+            if w:
+                won_by_team.setdefault(w, []).append({"n": n, "m": 1 if mj else 0})
+        periods = []
+        days_total = 0
+        for tm, s, e in merged:
+            end = e if e else (now_ts or None)
+            days = int((end - s) / DAY) if (s and end and end > s) else None
+            if days:
+                days_total += days
+            periods.append({"team": tm, "from": s, "to": e,
+                            "days": days, "trophies": won_by_team.get(tm, [])})
+        periods.reverse()                         # current team first (HLTV order)
+        hist[pk] = {"periods": periods, "teams": len(merged),
+                    "days_current": periods[0].get("days"), "days_total": days_total}
+    return hist
+
+# The game pays out prize money only to the top 8 of each event, always on the same
+# split of the total prize fund (verified against the game's own archived payouts):
+_PRIZE_FRAC = {1: 0.40, 2: 0.20, 3: 0.10, 4: 0.10, 5: 0.05, 6: 0.05, 7: 0.05, 8: 0.05}
+
+def compute_player_earnings(root, players, disp):
+    """REAL personal career prize money — stays with the player across transfers.
+
+    The game does NOT store a per-player money figure anywhere, so the old dashboard
+    faked it by splitting the *current* team's season prize across the *current*
+    roster (hence every team-mate showed the same number and it jumped to the new
+    club's figure the moment a player transferred).
+
+    Instead we reconstruct each player's own earnings from history: every tournament
+    in the catalog (root[51]) records, in field [24], which TEAM each player was on
+    at that event and the team's final PLACEMENT. The prize a team won = prizefund
+    (field [6]) x the fixed placement split above. We credit each player an equal
+    share of their team's prize for every event they actually played, and sum it
+    over their career. Because it's tied to where the player really was, it no
+    longer changes when they move clubs."""
+    # map a [24] roster key (usually the display nick) back to our internal player key
+    disp2int = {v: k for k, v in (disp or {}).items()}
+    def resolve(pk):
+        if pk in players:
+            return pk
+        return disp2int.get(pk, pk)
+    earn = {}
+    for e in full_catalog(root):
+        a = A(e)
+        if not a or len(a) < 25 or not isinstance(a[0], str):
+            continue
+        pf = L(at(a, 6))
+        if not pf:
+            continue
+        pls = M(at(a, 24)) or {}
+        if not pls:
+            continue
+        # how many players each team fielded at this event (to split its prize evenly)
+        counts = {}
+        parsed = []
+        for pk, pv in pls.items():
+            pa = A(pv)
+            if not pa or len(pa) < 5:
+                continue
+            place = L(at(pa, 0))
+            team = S(at(pa, 4))
+            frac = _PRIZE_FRAC.get(place, 0)
+            if not frac or not team:
+                continue
+            counts[team] = counts.get(team, 0) + 1
+            parsed.append((pk, team, frac))
+        for pk, team, frac in parsed:
+            cnt = counts.get(team, 5) or 5
+            share = pf * frac / cnt
+            ik = resolve(pk)
+            earn[ik] = earn.get(ik, 0.0) + share
+    return {k: int(round(v)) for k, v in earn.items()}
 
 def load_tournament_majors():
     p = _find_emdb()
@@ -868,7 +1245,14 @@ def load_tournament_majors():
                 continue
             nm = r[ni]
             tier = r[ti] if (0 <= ti < len(r)) else ""
-            if str(tier).strip().upper() == "MAJOR" or "major" in nm.lower():
+            # Follow the GAME's own DB classification: the Tier column is authoritative.
+            # Events flagged "MAJOR" in the DB (IEM Cologne, Perfect World Shanghai Major,
+            # NT World Championship) are the Majors. We deliberately do NOT fall back to
+            # matching "major" in the name — a "... Major" event that has been demoted in
+            # the DB (e.g. StarLadder Budapest Major, moved to a normal top tier so two
+            # Majors stop colliding on the calendar) must stop counting as a Major
+            # everywhere: calendar badge, team Major-champion badge and player Major-MVP.
+            if str(tier).strip().upper() == "MAJOR":
                 majors.add(nm)
         return majors
     except Exception as e:
@@ -982,10 +1366,14 @@ def compute_trophies(D):
     Returns (team_won{team:[(name,major)]}, icons{name:dataURI})."""
     majors = load_tournament_majors()
     tourns = D.get("tournaments", [])
+    # display name -> base (un-suffixed) name, for Major checks + icon file lookup
+    base_of = {t["name"]: t.get("base", t["name"]) for t in tourns}
+    def _isMaj(nm):
+        return base_of.get(nm, nm) in majors
     guid2t = {t["guid"]: t for t in tourns if t.get("guid")}
     team_won = {}
     for t in tourns:
-        mj = t["name"] in majors
+        mj = _isMaj(t["name"])
         for tm, pl in t["standings"].items():
             if pl == 1:
                 team_won.setdefault(tm, []).append((t["name"], mj))
@@ -1000,7 +1388,7 @@ def compute_trophies(D):
             if not t:
                 continue
             if t["standings"].get(p.get("team")) == 1:
-                won.append((t["name"], t["name"] in majors))
+                won.append((t["name"], _isMaj(t["name"])))
         if won:
             p["won"] = won
     # gather icons for every won tournament (teams + players), deduped
@@ -1017,13 +1405,14 @@ def compute_trophies(D):
         if not t.get("table"):
             continue
         names.add(t["name"])
-        tourn_list.append({"name": t["name"], "major": 1 if t["name"] in majors else 0,
+        tourn_list.append({"name": t["name"], "major": 1 if _isMaj(t["name"]) else 0,
                            "table": t["table"],
                            "swiss": t.get("swiss") or [], "bracket": t.get("bracket") or [],
+                           "pstats": t.get("pstats") or [],
                            "mvp": (D.get("tourn_mvp") or {}).get(t["name"], "")})
     icons = {}
     for nm in names:
-        ic = tournament_icon(nm)
+        ic = tournament_icon(base_of.get(nm, nm))    # icon file is keyed by the base name
         if ic:
             icons[nm] = ic
     return team_won, icons, tourn_list
@@ -1071,9 +1460,11 @@ def save_archive(a):
         log("archive save err: %s" % e)
 
 def _tourn_key(t, winner):
-    """Key a tournament by its (unique, numbered) name — each event instance appears
-    once, so it can never be counted twice no matter how many times it's captured."""
-    sig = (t.get("name", "") or "")
+    """Key a tournament by name + WINNER. Same event captured many times in one
+    season keeps the same winner -> one record. But when a NEW season re-runs an
+    event and a DIFFERENT team wins it, that's a new title, so the new champion is
+    actually credited instead of being blocked by last season's winner."""
+    sig = (t.get("name", "") or "") + "|" + (winner or "")
     return hashlib.sha1(sig.encode("utf-8")).hexdigest()[:16]
 
 def _winner_detail(D, t):
@@ -1117,14 +1508,36 @@ def merge_archive(D):
         arch["src"] = "root51_v2"
     td = arch["tournaments"]
     seq = arch.get("seq", 0)
-    # one-time cleanup: collapse any duplicate records of the same (name, winner)
-    # left over from the old content-hash keying, so nothing is counted twice.
+    # SELF-HEAL GUID NAMES: the game keys a repeated (new-season) event under a raw
+    # GUID at field[0] but keeps its real name at [1]/[21]. Records captured before that
+    # was resolved sit in the archive under the GUID. Every build we (a) accumulate a
+    # persistent guid->real-name map from the live DataTournament and (b) rewrite any
+    # GUID-named record to its real name. This runs BEFORE the dedup below, so the
+    # healed record collapses into the freshly-parsed real-named one (no duplicate, and
+    # a raw GUID can never reach the dashboard). Persisted so it resolves even after the
+    # event scrolls out of the DataTournament files.
+    gn = arch.setdefault("guid_names", {})
+    try:
+        for _k, _v in load_datatournament().items():
+            if isinstance(_k, str) and _is_guid_nick(_k):
+                _rn = S(at(A(_v), 1)) or S(at(A(_v), 21)) or ""
+                if _rn and not _is_guid_nick(_rn):
+                    gn[_k] = _rn
+        for _r in td.values():
+            _nm = _r.get("name")
+            if isinstance(_nm, str) and _is_guid_nick(_nm) and gn.get(_nm):
+                _r["name"] = gn[_nm]
+    except Exception as _e:
+        log("guid-name heal: %s" % _e)
+    # Dedup SEMANTICALLY by (name, winner) — not by storage key. This keeps every
+    # distinct title (incl. the same event won by different teams in different
+    # seasons) while collapsing repeat captures of the same win. Works regardless of
+    # whether old records were stored under the legacy name-only key.
     seen = {}
     for k in list(td.keys()):
         r = td[k]
-        dk = r.get("name")
+        dk = (r.get("name"), r.get("winner"))
         if dk in seen:
-            # keep the record that actually has a champion (more complete)
             if not td[seen[dk]].get("winner") and r.get("winner"):
                 del td[seen[dk]]; seen[dk] = k
             else:
@@ -1139,15 +1552,19 @@ def merge_archive(D):
         if not t.get("table"):
             continue
         winner, roster, mvp, evp = _winner_detail(D, t)
-        key = _tourn_key(t, winner)
-        if key in td:
+        dk = (t["name"], winner)
+        if dk in seen:                         # this exact title already archived
             continue
         seq += 1
+        key = _tourn_key(t, winner)
+        while key in td:                       # guarantee a unique storage slot
+            key += "x"
         td[key] = {"name": t["name"], "guid": t.get("guid", ""), "tier": t.get("tier", 0),
                    "major": 1 if t["name"] in majors else 0,
                    "standings": t["standings"], "table": t["table"],
                    "swiss": t.get("swiss") or [], "bracket": t.get("bracket") or [],
                    "winner": winner, "roster": roster, "mvp": mvp, "evp": evp, "seq": seq}
+        seen[dk] = key
     arch["seq"] = seq
 
     # ---- career stat accumulation (survives season resets) ----
@@ -1186,28 +1603,55 @@ def merge_archive(D):
                        "rating": round(0.45 + 0.55 * (k / dd) * (dmg / rr / 78.0), 2)}
 
     recs = sorted(td.values(), key=lambda r: r.get("seq", 0))
-    D["tournaments"] = [{"name": r["name"], "guid": r.get("guid", ""), "tier": r.get("tier", 0),
-                         "standings": r["standings"], "table": r["table"],
-                         "swiss": r.get("swiss") or [], "bracket": r.get("bracket") or []}
-                        for r in recs]
-    awards, won, team_won = {}, {}, {}
-    # MVP awards come straight from the game's tournament database (root[51]) — the
-    # REAL MVP of every finished event, exactly as the game shows it.
-    for tname, mvpnick in (D.get("tourn_mvp") or {}).items():
-        if not mvpnick:
-            continue
-        a = awards.setdefault(mvpnick, {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": [],
-                                        "majorMvp": 0, "majorMvpEvents": []})
-        a.setdefault("majorMvp", 0); a.setdefault("majorMvpEvents", [])
-        a["mvp"] += 1; a["mvpEvents"].append(tname)
-        if "major" in tname.lower():          # MVP of an actual Valve Major
-            a["majorMvp"] += 1; a["majorMvpEvents"].append(tname)
-    # trophies (players' titles) + team titles from the accumulated standings history
+    # SEASON SEPARATION: when an event is run again in a later season it becomes a
+    # SECOND record here. Give each repeat a distinct display name ("… (сезон N)")
+    # so both seasons show as their own page with their own bracket/winner/MVP —
+    # the old one is never overwritten and the new one is never hidden.
+    _grp = {}
     for r in recs:
+        _grp.setdefault(r.get("name"), []).append(r)
+    _idn = {}
+    _latest_disp = {}                       # base name -> newest instance's display name
+    for r in recs:
+        base = r.get("name")
+        grp = _grp[base]
+        if len(grp) <= 1:
+            dn = base
+        else:
+            dn = "%s (сезон %d)" % (base, grp.index(r) + 1)
+        _idn[id(r)] = dn
+        _latest_disp[base] = dn             # recs are seq-sorted, so last wins = newest
+    def _dn(r):
+        return _idn.get(id(r), r.get("name"))
+    D["tourn_latest_disp"] = _latest_disp    # let the calendar point at the newest instance
+    # per-player tournament stats live only in the CURRENT save (not archived), so grab
+    # them from the live parse (D['tournaments'] right now) and re-attach by base name.
+    _live_ps = {t.get("name"): t.get("pstats") for t in (D.get("tournaments") or []) if t.get("pstats")}
+    D["tournaments"] = [{"name": _dn(r), "base": r.get("name"), "guid": r.get("guid", ""),
+                         "tier": r.get("tier", 0), "standings": r["standings"], "table": r["table"],
+                         "swiss": r.get("swiss") or [], "bracket": r.get("bracket") or [],
+                         "pstats": _live_ps.get(r.get("name")) or []}
+                        for r in recs]
+    # Build the MVP map + MVP awards + trophies straight from the archive records
+    # (the complete, per-season source). Keyed by DISPLAY name so each season keeps
+    # its own MVP/champion; the Major check uses the BASE name.
+    D["tourn_mvp"] = {}
+    awards, won, team_won = {}, {}, {}
+    for r in recs:
+        dn = _dn(r); base = r.get("name")
+        mv = r.get("mvp")
+        if mv:
+            D["tourn_mvp"][dn] = mv
+            a = awards.setdefault(mv, {"mvp": 0, "evp": 0, "mvpEvents": [], "evpEvents": [],
+                                       "majorMvp": 0, "majorMvpEvents": []})
+            a["mvp"] += 1; a["mvpEvents"].append(dn)
+            if base in majors:                # MVP of a Major (per the game's tier)
+                a["majorMvp"] += 1; a["majorMvpEvents"].append(dn)
+        mj = 1 if base in majors else 0
         if r.get("winner"):
-            team_won.setdefault(r["winner"], []).append((r["name"], r.get("major", 0)))
+            team_won.setdefault(r["winner"], []).append((dn, mj))
         for nk in (r.get("roster") or []):
-            won.setdefault(nk, []).append((r["name"], r.get("major", 0)))
+            won.setdefault(nk, []).append((dn, mj))
     D["archived_awards"] = awards
     D["archived_won"] = won
     D["archived_team_won"] = team_won
@@ -1384,25 +1828,144 @@ def catalog_base(root):
     Tier-1, and larger Tier-2) with tier, prizefund, host city/country, prestige.
     field[4]=tier(0=T1,1=lower,2=Major), [5]=prestige, [6]=prize, [9]=country, [10]=city."""
     out = []
-    for e in (A(at(root, 51)) or []):
+    _MAJSET = load_tournament_majors()
+    for e in full_catalog(root):
         a = A(e)
         if not a or len(a) < 11 or not isinstance(a[0], str):
             continue
         name = a[0]; tier = L(at(a, 4)); prize = L(at(a, 6))
-        if tier == 1 and prize < 300000:      # drop the many tiny regional/filler events
+        if _is_guid_nick(name):               # skip unnamed placeholder/next-season slots
             continue
-        # a REAL Valve Major is only the event actually named "... Major" (there are
-        # just two a year in real life). The game marks several premier events tier 2,
-        # but those are top Tier-1 events, not Majors — don't call them Majors.
-        is_major = "major" in name.lower()
+        # drop tiny UNFINISHED filler events, but KEEP any event that already has a
+        # real result so the user's smaller/regional tournaments still show up.
+        has_result = bool(A(at(a, 16))) or bool(M(at(a, 23)))
+        if tier == 1 and prize < 300000 and not has_result:
+            continue
+        # Major status comes from the SAME authoritative source as trophies/honours
+        # (the DB Tier column via load_tournament_majors) so the calendar badge can never
+        # disagree with the team/player Major badges. A DB-demoted "... Major" (Budapest)
+        # therefore shows as a normal top-tier event here too.
+        is_major = name in _MAJSET
         out.append({"name": name, "tier": tier, "major": 1 if is_major else 0,
-                    "tierName": "Major" if is_major else ("Tier 1" if tier in (0, 2) else "Tier 2"),
+                    "tierName": "Major" if is_major else ("Tier 1" if tier == 0 else "Tier 2"),
                     "rating": round(Dd(at(a, 5)), 2), "prize": prize,
                     "city": S(at(a, 10)) or "", "country": S(at(a, 9)) or ""})
     return out
 
+def _apply_display_nicks(payload, disp):
+    """The save stores two names per player: an internal key at field[0]
+    ("huNter_kovac", "PR_nový", "Broland") and the real DISPLAY nick at field[1]
+    ("huNter", "PR", "Brollan"). Everything upstream is keyed by the internal key
+    (photos, stats, awards) so it keeps working; here, on the FINISHED payload, we
+    swap the SHOWN name to the real nick, re-key the players dict, and alias photos
+    so the client (which is unchanged) resolves images under the real nick too."""
+    if not disp:
+        return payload
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in list(o.items()):
+                if k in ("nick", "mvp") and isinstance(v, str) and v in disp:
+                    o[k] = disp[v]
+                elif isinstance(v, (dict, list)):
+                    walk(v)
+        elif isinstance(o, list):
+            for it in o:
+                if isinstance(it, (dict, list)):
+                    walk(it)
+    # don't waste time walking the big media dicts (no player nicks live there)
+    for key, val in payload.items():
+        if key in ("photos", "flags", "logos", "disp"):
+            continue
+        walk(val)
+    # re-key the players dict by the real display nick
+    pl = payload.get("players")
+    if isinstance(pl, dict):
+        newpl = {}
+        for k, o in pl.items():
+            nk = o.get("nick", k) if isinstance(o, dict) else k
+            newpl[nk] = o
+        payload["players"] = newpl
+    # alias photos so the (now display) nick resolves to the same image
+    ph = payload.get("photos")
+    if isinstance(ph, dict):
+        for key, d in disp.items():
+            if key in ph and d not in ph:
+                ph[d] = ph[key]
+    return payload
+
+# Tournaments the user has renamed for the dashboard. Applied as the very LAST step of
+# the build (after every key/dedup/season-suffix decision is already made), so relabelling
+# an event can never disturb the career archive, trophy dedup or winner attribution — it
+# only changes the SHOWN name. Substring match keeps any "(сезон N)" suffix intact.
+_TOURN_RENAME = {"StarLadder Budapest Major": "StarLadder Budapest Series"}
+
+def _rn_tourn(nm):
+    if not isinstance(nm, str):
+        return nm
+    for old, new in _TOURN_RENAME.items():
+        if old in nm:
+            nm = nm.replace(old, new)
+    return nm
+
+def _apply_tournament_renames(payload):
+    if not _TOURN_RENAME:
+        return payload
+    def fix_won(obj):
+        lst = obj.get("won") if isinstance(obj, dict) else None
+        if not isinstance(lst, list):
+            return
+        new = []
+        for w in lst:
+            if isinstance(w, dict):
+                if isinstance(w.get("n"), str):
+                    w["n"] = _rn_tourn(w["n"])
+                new.append(w)
+            elif isinstance(w, (list, tuple)) and w and isinstance(w[0], str):
+                new.append([_rn_tourn(w[0])] + list(w[1:]))   # hof [name, major] pairs
+            else:
+                new.append(w)
+        obj["won"] = new
+    for c in payload.get("calendar") or []:
+        if isinstance(c, dict) and isinstance(c.get("name"), str):
+            c["name"] = _rn_tourn(c["name"])
+    for t in payload.get("tournaments") or []:
+        if isinstance(t, dict) and isinstance(t.get("name"), str):
+            t["name"] = _rn_tourn(t["name"])
+    fix_won(payload.get("team") or {})
+    for p in (payload.get("players") or {}).values():
+        if not isinstance(p, dict):
+            continue
+        fix_won(p)
+        for k in ("mvpEvents", "evpEvents", "majorMvpEvents"):
+            if isinstance(p.get(k), list):
+                p[k] = [_rn_tourn(x) for x in p[k]]
+    for h in payload.get("hof") or []:
+        fix_won(h)
+    for r in payload.get("ranking") or []:
+        fix_won(r)
+    # alias tournament icons so the NEW display name still resolves to a logo
+    ic = payload.get("tourn_icons")
+    if isinstance(ic, dict):
+        for k in list(ic.keys()):
+            nk = _rn_tourn(k)
+            if nk != k and nk not in ic:
+                ic[nk] = ic[k]
+    return payload
+
 def build_payload(D, photos, team_logo, tlogos):
     my = D["myTeam"]
+    # bulk extra photo URLs {nick: url}. Merged HERE (not in run()) because the
+    # localhost server builds photos in its own build() and only shares build_payload.
+    # These OVERRIDE the DB (so a dead DB url like picui.cn is replaced by a working one).
+    try:
+        _ep = os.path.join(HERE, "extra_photos.json")
+        if os.path.isfile(_ep):
+            _cpa = custom_photos_all()
+            for _nk, _url in json.load(io.open(_ep, encoding="utf-8")).items():
+                if _url and _nk not in _cpa:
+                    photos[_nk] = _url
+    except Exception as _e:
+        log("extra_photos(bp): %s" % _e)
     # accumulate the full career history first (never deletes past seasons)
     try:
         merge_archive(D)
@@ -1449,10 +2012,13 @@ def build_payload(D, photos, team_logo, tlogos):
             if pl == 1:
                 winners[t["name"]] = tm
     done_names = set(t["name"] for t in D.get("tournaments", []) if t.get("table"))
+    latest = D.get("tourn_latest_disp", {})     # base name -> newest season's display name
     calendar = []
     for c in D.get("catalog", []):
-        cc = dict(c); cc["done"] = 1 if c["name"] in done_names else 0
-        cc["winner"] = winners.get(c["name"], "")
+        dn = latest.get(c["name"], c["name"])   # a repeated event resolves to its NEWEST run
+        cc = dict(c); cc["name"] = dn
+        cc["done"] = 1 if dn in done_names else 0
+        cc["winner"] = winners.get(dn, "")
         calendar.append(cc)
     calendar.sort(key=lambda t: (-(2 if t["tier"] == 2 else (1 if t["tier"] == 0 else 0)), -t["prize"]))
     # tournament logos for the calendar (CustomAssets/Tournaments/<name>.png)
@@ -1465,6 +2031,12 @@ def build_payload(D, photos, team_logo, tlogos):
     # only players shown anywhere (roster + anyone with match stats); drops ~5000
     # never-referenced players, shrinking the page and speeding up json/write
     keep = set(nk for nk, p in D["players"].items() if p.get("stats")) | set(p["nick"] for p in D["roster"])
+    # tournament -> winning team (live standings + full archive), for trophy-by-team grouping
+    tourn_winner = dict(winners)
+    for tm, wl in (D.get("archived_team_won") or {}).items():
+        for n, _mj in wl:
+            tourn_winner.setdefault(n, tm)
+    club_hist = build_club_history(D.get("transfers") or [], D["players"], tourn_winner)
     players = {}
     for nk, p in D["players"].items():
         if nk not in keep: continue
@@ -1488,10 +2060,11 @@ def build_payload(D, photos, team_logo, tlogos):
         if p.get("retired"): o["retired"] = 1
         vhh = (D.get("vhist") or {}).get(nk)
         if vhh and len(vhh) > 1: o["vhist"] = vhh                                     # value/rating over time
-        te = team_earnings.get(p["team"], 0)
-        if te and team_count.get(p["team"]):
-            o["earnings"] = int(te / team_count[p["team"]])   # even split of team prize
+        pe = D.get("player_earnings", {}).get(nk, 0)   # real personal career prize (transfer-stable)
+        if pe:
+            o["earnings"] = pe
         if p.get("medals"): o["medals"] = p["medals"]
+        if club_hist.get(nk): o["clubs"] = club_hist[nk]        # club path oldest -> current
         if p.get("won"): o["won"] = [{"n": n, "m": 1 if mj else 0} for n, mj in p["won"]]
         h = hist.get(nk)
         if h and len(h) >= 2: o["hist"] = h[-24:]
@@ -1552,7 +2125,7 @@ def build_payload(D, photos, team_logo, tlogos):
     hof_list.sort(key=lambda h: (len(h.get("won") or []), h.get("mvp", 0),
                                  (h.get("career") or {}).get("maps", 0), h.get("overall", 0)), reverse=True)
     hof_list = hof_list[:80]
-    return {
+    payload = {
         "my_team": my,
         "top20": top20,
         "team_of_season": team_of_season,
@@ -1574,7 +2147,7 @@ def build_payload(D, photos, team_logo, tlogos):
         "my_matches": [],
         "ranking": build_ranking(D, team_won),
         "rank_hist": D.get("rankHist", {}),
-        "transfers": D.get("transfers", [])[:250],
+        "transfers": D.get("transfers", [])[:5000],
         "free_agents": free_agents,
         "talents": talents,
         "top_value": top_value,
@@ -1585,7 +2158,9 @@ def build_payload(D, photos, team_logo, tlogos):
         "photos": photos,
         "logos": _merge_logos(my, team_logo, tlogos),
         "flags": load_flags(),
+        "disp": D.get("disp", {}),   # {internal key -> real display nick} for the 131 dual-named players
     }
+    return _apply_tournament_renames(_apply_display_nicks(payload, D.get("disp")))
 
 def _merge_logos(my, team_logo, tlogos):
     logos = dict(tlogos) if tlogos else {}
@@ -1640,8 +2215,22 @@ def run():
             b64 = extract_photo(idx, resS_path, nk, pp.get("first", ""), pp.get("last", "")) or ""
             pcache[nk] = b64; new += 1
         if b64: photos[nk] = b64
-    for nk, b in custom_photos_all().items():   # user custom photos override everything
+    cpa = custom_photos_all()
+    for nk, b in cpa.items():                   # user custom image FILES override everything
         photos[nk] = b
+    # extra photo URLs {nick: url} added in bulk (e.g. from the web) WITHOUT touching
+    # the encrypted DB. Browser loads the URL directly. A custom file still wins.
+    try:
+        ep = os.path.join(HERE, "extra_photos.json")
+        if os.path.isfile(ep):
+            extra = json.load(io.open(ep, encoding="utf-8"))
+            nadd = 0
+            for nk, url in extra.items():
+                if url and nk not in cpa:
+                    photos[nk] = url; nadd += 1
+            log("extra_photos: %d urls merged" % nadd)
+    except Exception as e:
+        log("extra_photos load fail: %s" % e)
     if new: save_cache(CACHE_PHOTO, sig, pcache)
     log("photos: %d / %d (%d new)" % (len(photos), len(need), new))
 

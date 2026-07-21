@@ -459,6 +459,16 @@ function trophyItems(won){if(!won||!won.length)return '';
  return won.slice().sort((a,b)=>b.m-a.m).map(w=>{const ic=TICON(w.n);return '<div class="mtrophy'+(w.m?' maj':'')+'" style="cursor:pointer" onclick=\'event.stopPropagation();openTour('+JSON.stringify(w.n)+')\' title="'+w.n+(w.m?' — Major':'')+'">'+(ic?'<img src="'+ic+'">':'🏆')+'</div>';}).join('');}
 function trophyStrip(won){var s=trophyItems(won);return s?'<div class="mtrophies">'+s+'</div>':'';}
 function majBadge(won,word){const n=(won||[]).filter(w=>w.m).length;return n?'<span class="mbadge" style="background:var(--gold)">'+(word||'Чемпион мажора')+' ×'+n+'</span>':'';}
+// HLTV-style club history: time period, team, trophies won at that team + totals
+function fmtMY(ts){if(!ts)return '';var d=new Date(ts*1000);return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]+' '+d.getUTCFullYear();}
+function clubHistory(p){var h=p&&p.clubs;if(!h||!h.periods||h.periods.length<2)return '';
+ var rows=h.periods.map(function(pd,i){var logo=(D.logos||{})[pd.team];var cur=(i===0);
+  var per=(pd.from?fmtMY(pd.from):'—')+' – '+(pd.to?fmtMY(pd.to):'сейчас');
+  var tro=(pd.trophies||[]).map(function(w){var ic=TICON(w.n);return ic?'<img src="'+ic+'" title="'+esc(w.n)+(w.m?' — Major':'')+'" style="width:20px;height:20px;object-fit:contain;vertical-align:middle'+(w.m?';filter:drop-shadow(0 0 3px var(--gold))':'')+'">':'<span title="'+esc(w.n)+'">🏆</span>';}).join(' ');
+  return '<tr onclick=\'openT('+JSON.stringify(pd.team)+')\' style="cursor:pointer"><td style="color:var(--mut);white-space:nowrap;font-size:12px">'+per+'</td><td><span style="display:inline-flex;align-items:center;gap:6px">'+(logo?'<img src="'+logo+'" style="width:20px;height:20px;object-fit:contain">':'')+esc(pd.team)+(cur?' <span style="color:var(--gold);font-size:10px">● сейчас</span>':'')+'</span></td><td style="text-align:right">'+tro+'</td></tr>';}).join('');
+ var dc=h.days_current?h.days_current+' дн.':'—',dt=h.days_total?h.days_total+' дн.':'—';
+ return '<div class="statbox"><div class="sh">Карьерный путь <span>· '+h.teams+' команд · '+dc+' в текущей · '+dt+' всего</span></div>'
+  +'<table style="width:100%;border-collapse:collapse"><tr style="color:var(--mut);font-size:11px;text-align:left"><td>Период</td><td>Команда</td><td style="text-align:right">Трофеи</td></tr>'+rows+'</table></div>';}
 // roles (derived from attributes server-side)
 const ROLECOL={AWP:'#8b5cf6',IGL:'#f0a83a',Entry:'#e5544b',Support:'#4ba85a',Rifler:'#7b8694'};
 function roleTag(r){if(!r)return '';const c=ROLECOL[r]||ROLECOL.Rifler;return '<span class="rtag" style="background:'+c+'22;color:'+c+'">'+r+'</span>';}
@@ -929,11 +939,12 @@ window.openP=nick=>{const p=P[nick];if(!p)return;window.__tcNick=nick;const s=p.
    <tr><td>Команда</td><td>${teamCell}</td></tr>
    <tr><td>Потенциал</td><td>${p.potential||'—'}</td></tr>
    ${p.value?`<tr><td>Стоимость</td><td>${fmt(p.value)}</td></tr>`:''}
-   ${p.earnings?`<tr><td>Призовые (доля от команды)</td><td style="color:var(--gold)">${fmt(p.earnings)}</td></tr>`:''}
+   ${p.earnings?`<tr><td>Призовые за карьеру</td><td style="color:var(--gold)">${fmt(p.earnings)}</td></tr>`:''}
    ${t20chips?`<tr><td>Top 20</td><td>${t20chips}</td></tr>`:''}
    ${badges?`<tr><td>Награды</td><td><div class="mbadges">${badges}</div></td></tr>`:''}
   </table>
  </div></div>
+ ${clubHistory(p)}
  ${(trInner||t20medals)?`<div class="statbox"><div class="sh">Трофеи</div><div class="mtrophies" style="align-items:flex-end">${trInner}${t20medals}</div></div>`:''}
  ${(p.mvp||p.evp)?`<div class="statbox"><div class="sh">Награды турниров</div><div class="mbadges" style="justify-content:flex-start;align-items:center;gap:14px">${mvpBadge(p,26)}${evpBadge(p)}</div></div>`:''}
  ${statsBlock(p)}
@@ -1006,6 +1017,14 @@ window.openTour=function(name){var t=(D.tournaments||[]).find(function(x){return
      return '<div class="swcol '+hc+'"><div class="swh '+hc+'">'+rec+mark+'</div>'+body+'</div>';}).join('');
    sw='<div class="statbox"><div class="sh">Швейцарская стадия <span>· '+t.swiss.length+' команд</span></div><div class="swgrid">'+scols+'</div></div>';
  }
+ // per-player stats table (K-D / KD / rating), all players who played, best first
+ var pst='';
+ if(t.pstats&&t.pstats.length){
+   var prows=t.pstats.map(function(r,i){var lg=tl(r.team);
+     var rc=r.rating>=1.15?'#5bd68a':(r.rating>=1.0?'#cfd8dc':(r.rating>=0.9?'#e0b74d':'#e0736b'));
+     return '<tr onclick=\'openP('+JSON.stringify(r.nick)+')\' style="cursor:pointer"><td style="color:var(--mut)">'+(i+1)+'</td><td><div class="pcell">'+avn(r.nick)+'<span>'+r.nick+'</span></div></td><td style="cursor:pointer" onclick=\'event.stopPropagation();openT('+JSON.stringify(r.team)+')\'>'+(lg?'<img class="rlogo" style="width:20px;height:20px;vertical-align:middle" src="'+lg+'"> ':'')+r.team+'</td><td style="text-align:center">'+r.k+'–'+r.d+'</td><td style="text-align:center">'+r.kd+'</td><td style="text-align:center;color:'+rc+';font-weight:700">'+r.rating+'</td></tr>';}).join('');
+   pst='<div class="statbox"><div class="sh">Статистика игроков <span>· '+t.pstats.length+'</span></div><table><thead><tr><th>#</th><th>Игрок</th><th>Команда</th><th>K–D</th><th>KD</th><th>Рейт.</th></tr></thead><tbody>'+prows+'</tbody></table></div>';
+ }
  document.getElementById('mbox').innerHTML='<span class="close" onclick="document.getElementById(\'modal\').classList.remove(\'on\')">×</span>'+
   '<div class="mhero" style="align-items:center">'+logoEl+
   '<div class="mheroinfo" style="flex:1;min-width:0"><div class="mname">'+name+'</div>'+
@@ -1014,7 +1033,7 @@ window.openTour=function(name){var t=(D.tournaments||[]).find(function(x){return
    (t.mvp?'<div class="mreal" style="margin-top:4px">MVP: <b class="mvpcoin" style="color:var(--gold);cursor:pointer" onclick=\'event.stopPropagation();openP('+JSON.stringify(t.mvp)+')\'>'+t.mvp+'</b></div>':'')+
    '</div></div>'+
   brk+sw+
-  '<div class="statbox"><div class="sh">Итоговая таблица'+(_totalP?' <span>· призовой фонд '+fmt(_totalP)+'</span>':'')+'</div><table><thead><tr><th>Место</th><th>Команда</th><th>Приз</th><th>Очки</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" style="color:var(--mut)">Нет данных</td></tr>')+'</tbody></table></div>';
+  '<div class="statbox"><div class="sh">Итоговая таблица'+(_totalP?' <span>· призовой фонд '+fmt(_totalP)+'</span>':'')+'</div><table><thead><tr><th>Место</th><th>Команда</th><th>Приз</th><th>Очки</th></tr></thead><tbody>'+(rows||'<tr><td colspan="4" style="color:var(--mut)">Нет данных</td></tr>')+'</tbody></table></div>'+pst;
  document.getElementById('modal').classList.add('on');};
 // make ranked-team players + free agents clickable (basic card even without photo/stats)
 (D.ranking||[]).forEach(function(t){(t.roster||[]).forEach(function(r){if(!P[r.nick])P[r.nick]={nick:r.nick,first:r.first||'',last:r.last||'',country:r.country,team:t.team,overall:r.overall,potential:0,age:r.age,attrs:{},stats:null};});});
