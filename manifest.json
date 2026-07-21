@@ -51,6 +51,7 @@
   "BepInEx/plugins/TeamCenter/updater.py": "297e63656391a69dffb8d90d2e54f9d14b72f1687ff896d8672a774b5efaa63c",
   "BepInEx/plugins/TeamCenter/update_config.json": "b510cec75da3f7457f375aaad575495f7f9cdeaf9e13dd110192aaf34f678a2f",
   "BepInEx/plugins/TeamCenter/__pycache__/updater.cpython-313.pyc": "5d7d1087e52cbcb5871c28d8287ad568d642dbe3d518e8d9b065dc8f67a9eb7f",
+  "BepInEx/plugins/TournamentScheduler/TournamentScheduler.dll": "9fdac3ddbbbe5614753d21b3b0d6ee2b3bde91c3e9e1321a6b7810038a6d5a82",
   "EsportsManager_Data/StreamingAssets/default.emdb": "c6e25a2bba2e80819d478b231848d14f61ad2bc3b63c9dd15b7acae342269005",
   "_lowdb/EM26_database.emdb": "c6e25a2bba2e80819d478b231848d14f61ad2bc3b63c9dd15b7acae342269005",
   "teamcenter_gen.py": "99cf0e8a6c2fd6f34e2ef841ad711e9de195da5cfe384864e17cc0ab53e913e5",
@@ -60,7 +61,7 @@
   "game_logos.json": "d00f6a1c7848440c03b1def3a8cf5c5b468bc2c5ff2f460c39935a97ec861f97",
   "updater.py": "297e63656391a69dffb8d90d2e54f9d14b72f1687ff896d8672a774b5efaa63c"
  },
- "count": 53,
+ "count": 54,
  "remove": [
   "BepInEx/plugins/MatchSkipFIX.dll"
  ]
