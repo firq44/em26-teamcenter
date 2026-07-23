@@ -98,9 +98,35 @@ class MP:
             m[k] = self.parse()
         return m
 
-def parse_mpack(path):
+def _read_shared(path):
+    """Read a file's bytes WITHOUT blocking other processes from writing/deleting it.
+    The game writes SlotData.mpack (and DataTournament/MapStats files); a plain open()
+    on Windows takes a share-read lock that blocks the game's save, surfacing in-game as
+    'failed to write save file'. Opening with full share mode (READ|WRITE|DELETE) lets the
+    game keep saving while we read; a torn read just means one slightly-stale dashboard
+    refresh, which is harmless. Falls back to a plain read off-Windows or on any error."""
+    if os.name == "nt":
+        try:
+            import ctypes, msvcrt
+            from ctypes import wintypes
+            CreateFileW = ctypes.windll.kernel32.CreateFileW
+            CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                    wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+            CreateFileW.restype = wintypes.HANDLE
+            GENERIC_READ = 0x80000000; SHARE_ALL = 0x1 | 0x2 | 0x4
+            OPEN_EXISTING = 3; FILE_ATTRIBUTE_NORMAL = 0x80
+            h = CreateFileW(path, GENERIC_READ, SHARE_ALL, None, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, None)
+            if h and h != wintypes.HANDLE(-1).value:
+                fd = msvcrt.open_osfhandle(h, os.O_RDONLY)
+                with os.fdopen(fd, "rb") as f:   # closing this also closes the handle
+                    return f.read()
+        except Exception:
+            pass
     with open(path, "rb") as f:
-        return MP(f.read()).parse()
+        return f.read()
+
+def parse_mpack(path):
+    return MP(_read_shared(path)).parse()
 
 # loose accessors
 def A(o): return o if isinstance(o, list) else None
@@ -809,7 +835,7 @@ def load_datatournament():
     out = {}
     for f in files:
         try:
-            d = MP(open(f, "rb").read()).parse()
+            d = MP(_read_shared(f)).parse()
             if isinstance(d, dict):
                 for nm, rec in d.items():
                     if isinstance(nm, str):
@@ -2174,7 +2200,7 @@ def run():
     if not save_dir:
         raise RuntimeError("No save found in " + os.path.join(LOW_DIR, "Save"))
     log("save: " + save_dir)
-    root = MP(open(os.path.join(save_dir, "SlotData.mpack"), "rb").read()).parse()
+    root = MP(_read_shared(os.path.join(save_dir, "SlotData.mpack"))).parse()
     D = extract(A(root) or [])
     log("team: %s  roster: %d  players: %d" % (D["myTeam"], len(D["roster"]), len(D["players"])))
     aggregate(D, save_dir)
